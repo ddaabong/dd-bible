@@ -4928,6 +4928,73 @@ function applyAnim(force){
   if(a!=='none') t.classList.add('fx-'+a);
 }
 
+/* GitHub Pages data/ 폴더의 TXT 자동 설치
+   data/manifest.json 예시:
+   {"files":[{"name":"korEASY.txt","code":"korEASY"},{"name":"korNKRV.txt","code":"korNKRV"}]}
+   파일명은 data/ 폴더 안의 실제 파일명과 정확히 일치해야 합니다. */
+async function autoInstallHostedTranslations(){
+  const manifestUrl = new URL('./data/manifest.json', location.href);
+  let manifest;
+  try {
+    const mr = await fetch(manifestUrl.href, {cache:'no-store'});
+    if(!mr.ok) throw new Error('manifest.json을 찾을 수 없습니다 ('+mr.status+')');
+    manifest = await mr.json();
+  } catch(e) {
+    /* manifest가 없으면 공개 GitHub 저장소 API에서 data/ 안의 TXT 목록을 자동 탐색 */
+    try {
+      const apiUrl = 'https://api.github.com/repos/ddaabong/dd-bible/contents/data';
+      const ar = await fetch(apiUrl, {headers:{'Accept':'application/vnd.github+json'}, cache:'no-store'});
+      if(!ar.ok) throw new Error('GitHub 파일 목록 조회 실패 ('+ar.status+')');
+      const listing = await ar.json();
+      manifest = {files: listing.filter(x=>x.type==='file' && /\.(txt|text|bdf)$/i.test(x.name))
+        .map(x=>({name:x.name, url:x.download_url}))};
+    } catch(apiError) {
+      console.info('[자동 설치] TXT 목록을 찾을 수 없습니다:', e, apiError);
+      return false;
+    }
+  }
+  const items = Array.isArray(manifest) ? manifest : (manifest.files || manifest.translations || []);
+  if(!items.length){ console.info('[자동 설치] manifest에 TXT 파일 목록이 없습니다.'); return false; }
+  let installed = 0;
+  for(let i=0;i<items.length;i++){
+    const item = typeof items[i] === 'string' ? {name:items[i]} : items[i];
+    const name = item.name || item.file || item.path;
+    if(!name) continue;
+    const url = item.url ? new URL(item.url, manifestUrl).href : new URL(name, new URL('./data/', location.href)).href;
+    try{
+      toast('성경 번역본 설치 중… '+(i+1)+'/'+items.length);
+      const response = await fetch(url);
+      if(!response.ok) throw new Error('다운로드 실패 '+response.status);
+      const text = await response.text();
+      const parsed = parseBibleText(text);
+      const meta = parsed.__meta || {};
+      delete parsed.__meta;
+      const books = Object.keys(parsed);
+      if(!books.length) throw new Error('인식된 구절이 없습니다. TXT 형식을 확인하세요.');
+      const code = item.code || guessVersion(name);
+      if(!bibleByVersion[code]) bibleByVersion[code] = {};
+      books.forEach(book=>{
+        if(!bibleByVersion[code][book]) bibleByVersion[code][book] = {};
+        Object.assign(bibleByVersion[code][book], parsed[book]);
+      });
+      if(!loadedVersionCodes.includes(code)) loadedVersionCodes.push(code);
+      await saveDB();
+      installed++;
+      console.info('[자동 설치]', name, '→', code, '책:', books.length, 'matched:', meta.matched);
+    }catch(e){ console.error('[자동 설치 실패]', name, e); }
+  }
+  if(installed){
+    paneVersion = defaultPaneVersions();
+    fillVersionSelects();
+    $('sel-book').disabled=false; $('sel-chapter').disabled=false;
+    restoreLastPos(); posReady=true; updateReadLabels();
+    toast('번역본 자동 설치 완료 · '+installed+'개 저장됨');
+    return true;
+  }
+  toast('자동 설치할 번역본이 없습니다. data/manifest.json과 TXT 파일 경로를 확인하세요.');
+  return false;
+}
+
 (async function init(){
   try{ const t=localStorage.getItem('ddabongTheme'); if(t==='dark'){ document.documentElement.setAttribute('data-theme','dark'); $('btn-theme').textContent='☀️'; } }catch{}
   populateVoices(); setTimeout(populateVoices,800);
@@ -4938,6 +5005,8 @@ function applyAnim(force){
     fillVersionSelects(); restoreLastPos(); posReady=true;
     toast('저장된 번역판 '+loadedVersionCodes.length+'개 불러옴');
     updateReadLabels();
+  } else {
+    await autoInstallHostedTranslations();
   }
 })();
 </script>
