@@ -3904,17 +3904,40 @@ function speak(){
       return;
     }catch(e){ console.warn('native tts failed', e); }
   }
-  const u=new SpeechSynthesisUtterance(text);
-  applyVoice(u); u.rate=rate; u.volume=vol; try{ u.pitch=ttsPitch(); }catch(e){}
-  u.onend=goNext;
-  u.onerror=function(){ setTimeout(goNext, 120); };
-  try{ synth.speak(u); }catch(e){ setTimeout(goNext, 200); return; }
-  const est2=Math.max(1800, Math.min(45000, (String(text).length*95)/(rate||1)));
-  window.__ttsWatch=setTimeout(function(){
+  /* Chrome/Android: cancel() 직후 speak() 하면 무음인 경우가 많아 짧게 대기 */
+  setTimeout(function(){
     if(seq!==ttsSeq || !isPlaying || ttsPaused) return;
-    try{ if(synth.speaking) return; }catch(e){}
-    goNext();
-  }, est2+900);
+    try{ if(synth.getVoices && !synth.getVoices().length) populateVoices(); }catch(e){}
+    const u=new SpeechSynthesisUtterance(text);
+    applyVoice(u); u.rate=rate; u.volume=vol; try{ u.pitch=ttsPitch(); }catch(e){}
+    u.lang = u.lang || lang;
+    var started=false;
+    u.onstart=function(){ started=true; };
+    u.onend=goNext;
+    u.onerror=function(ev){
+      console.warn('tts error', ev && ev.error);
+      try{
+        if(!window.__ttsErrToast){
+          window.__ttsErrToast=1;
+          toast('음성 재생 실패 · 휴대폰 설정에서 한국어 TTS를 설치해 주세요');
+          setTimeout(function(){ window.__ttsErrToast=0; }, 4000);
+        }
+      }catch(e){}
+      setTimeout(goNext, 120);
+    };
+    try{ synth.speak(u); }catch(e){ setTimeout(goNext, 200); return; }
+    /* 일부 브라우저: speak 후 바로 speaking=false → resume 한 번 시도 */
+    setTimeout(function(){
+      if(seq!==ttsSeq || started) return;
+      try{ if(synth.paused) synth.resume(); }catch(e){}
+    }, 250);
+    const est2=Math.max(1800, Math.min(45000, (String(text).length*95)/(rate||1)));
+    window.__ttsWatch=setTimeout(function(){
+      if(seq!==ttsSeq || !isPlaying || ttsPaused) return;
+      try{ if(synth.speaking) return; }catch(e){}
+      goNext();
+    }, est2+900);
+  }, 80);
 }
 window.onNativeTtsEnd=function(id){
   try{ if(window.__ttsWatch) clearTimeout(window.__ttsWatch); }catch(e){}
@@ -4332,6 +4355,10 @@ $('btn-clear-data').onclick=async ()=>{
   toast('삭제했습니다'); closeSheet('sheet-menu');
 };
 if('onvoiceschanged' in synth) synth.addEventListener('voiceschanged', populateVoices);
+try{ if(synth.getVoices) synth.getVoices(); }catch(e){}
+setTimeout(function(){ try{ populateVoices(); }catch(e){} }, 300);
+setTimeout(function(){ try{ populateVoices(); }catch(e){} }, 1200);
+setTimeout(function(){ try{ populateVoices(); }catch(e){} }, 3000);
 
 
 /* ========== 절 다중 선택 + 플로팅 메뉴 ========== */
