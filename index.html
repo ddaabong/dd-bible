@@ -1662,6 +1662,35 @@ html, body { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body>.sheet-bg:not(#sheet-menu):not([hidden]){z-index:60000!important}
 body>.sheet-bg:not(#sheet-menu):not([hidden])>.sheet{position:relative!important;z-index:60001!important}
 </style>
+
+<style id="bp-video-style">
+.bp-video-btn{position:relative;overflow:visible!important}
+.bp-video-btn .bp-play-svg{width:20px;height:20px;display:block}
+.bp-video-btn .bp-ring{stroke:currentColor;fill:none;stroke-width:1.6;opacity:.9;transform-origin:center;animation:bp-ring-pulse 2.8s ease-in-out infinite}
+.bp-video-btn .bp-triangle{fill:currentColor;transform-origin:center;animation:bp-tri-breathe 2.8s ease-in-out infinite}
+@keyframes bp-ring-pulse{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.08);opacity:1}}
+@keyframes bp-tri-breathe{0%,100%{transform:scale(.92);opacity:.9}50%{transform:scale(1);opacity:1}}
+[data-theme="dark"] .bp-video-btn .bp-ring{stroke:#f5e6c8}
+[data-theme="dark"] .bp-video-btn .bp-triangle{fill:#f5e6c8}
+.bp-video-btn:active .bp-ring,.bp-video-btn:active .bp-triangle{animation:none;transform:scale(.92)}
+#sheet-bible-video .sheet{max-height:92dvh;padding:12px 12px calc(16px + env(safe-area-inset-bottom,0px))}
+#sheet-bible-video .bp-embed-wrap{max-height:calc(92dvh - 70px);overflow-y:auto;-webkit-overflow-scrolling:touch;border-radius:12px}
+#sheet-bible-video .bp-container{padding:12px 8px;max-width:100%}
+#sheet-bible-video .bp-header h2{font-size:18px}
+#sheet-bible-video .bp-header p{font-size:13px}
+#sheet-bible-video .bp-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}
+#sheet-bible-video .bp-card{max-width:180px;padding:8px}
+#sheet-bible-video .bp-icon-wrap{border-radius:10px}
+#sheet-bible-video .bp-title{font-size:13px}
+#sheet-bible-video .bp-title span{font-size:11px}
+#sheet-bible-video .bp-count{font-size:11px}
+#sheet-bible-video .bp-fallback{font-size:42px}
+@media(max-width:480px){
+  #sheet-bible-video .bp-grid{grid-template-columns:repeat(2,1fr);gap:10px}
+  #sheet-bible-video .bp-fallback{font-size:36px}
+}
+</style>
+
 </head>
 <body>
 <!-- ===== [TH] 오늘의 말씀 홈 레이어 (첫 화면) ===== -->
@@ -1793,6 +1822,12 @@ body>.sheet-bg:not(#sheet-menu):not([hidden])>.sheet{position:relative!important
       <button class="icon-btn" id="h-copy" type="button" title="복사(선택한 절)" aria-label="복사"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></button>
       <button class="icon-btn" id="h-memo" type="button" title="메모(선택한 절)" aria-label="메모">📌</button>
       <button class="icon-btn" id="h-image" type="button" title="영상·이미지 카드" aria-label="영상">🎨</button>
+      <button class="icon-btn bp-video-btn" id="btn-bible-video" type="button" title="성경 동영상 (BibleProject)" aria-label="성경 동영상">
+        <svg class="bp-play-svg" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9" class="bp-ring"/>
+          <path d="M10 8.5v7l6-3.5z" fill="currentColor" stroke="none" class="bp-triangle"/>
+        </svg>
+      </button>
       <button class="icon-btn" id="h-compare" type="button" title="번역 비교(선택한 절)" aria-label="번역 비교">🔀</button>
       <button class="icon-btn" id="btn-help" type="button" title="도움말">❓</button>
     </div>
@@ -18929,5 +18964,412 @@ html body.v34-layout-bottom:not(#v9x) #layout-menu-dock.dock-bottom>#hdr-strip{f
   apply(); window.addEventListener('resize',apply); setTimeout(apply,300); setTimeout(apply,1200);
 })();
 </script>
+
+<!-- 성경 동영상 (BibleProject) -->
+<div class="sheet-bg" id="sheet-bible-video" hidden>
+  <div class="sheet">
+    <button class="sheet-close" data-close="sheet-bible-video" type="button" aria-label="닫기">✕</button>
+    <h2 style="margin:0 0 8px;font-size:17px;display:flex;align-items:center;gap:8px;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l6-3.5z" fill="currentColor" stroke="none"/></svg>
+      성경 동영상
+    </h2>
+    <p style="margin:0 0 12px;font-size:13px;color:var(--muted);">바이블프로젝트 한국어 애니메이션 시리즈</p>
+    <div class="bp-embed-wrap">
+<section id="bibleproject-grid" class="bp-container">
+  <div class="bp-header">
+    <h2>동영상 시리즈</h2>
+    <p>성경의 핵심 주제와 각 책을 살펴보는 애니메이션 영상</p>
+  </div>
+
+  <div class="bp-grid">
+    <!-- 1. 구약 -->
+    <a href="https://www.youtube.com/playlist?list=PLdjM8wRcBQnmm-CLscqgP_T4dRwWqh9iZ" target="_blank" class="bp-card">
+      <div class="bp-icon-wrap">
+        <img src="images/old_testament.png" alt="구약 Old Testament" class="bp-icon" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+        <div class="bp-fallback" style="display:none;">📜</div>
+      </div>
+      <div class="bp-info">
+        <strong class="bp-title">구약 <span>Old Testament</span></strong>
+        <span class="bp-count">41 동영상</span>
+      </div>
+    </a>
+
+    <!-- 2. 신약 -->
+    <a href="https://www.youtube.com/playlist?list=PLdjM8wRcBQnnTA1EG0T0Yem-QPvNpe99k" target="_blank" class="bp-card">
+      <div class="bp-icon-wrap">
+        <img src="images/new_testament.png" alt="신약 New Testament" class="bp-icon" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+        <div class="bp-fallback" style="display:none;">✝️</div>
+      </div>
+      <div class="bp-info">
+        <strong class="bp-title">신약 <span>New Testament</span></strong>
+        <span class="bp-count">32 동영상</span>
+      </div>
+    </a>
+
+    <!-- 3. 성경의 주제들 -->
+    <a href="https://www.youtube.com/playlist?list=PLdjM8wRcBQnnfspuouE6V7FANb2L1VBZM" target="_blank" class="bp-card">
+      <div class="bp-icon-wrap">
+        <img src="images/biblical_themes.png" alt="성경의 주제들 Biblical Themes" class="bp-icon" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+        <div class="bp-fallback" style="display:none;">🔑</div>
+      </div>
+      <div class="bp-info">
+        <strong class="bp-title">성경의 주제들 <span>Biblical Themes</span></strong>
+        <span class="bp-count">27 동영상</span>
+      </div>
+    </a>
+
+    <!-- 4. 산상수훈 시리즈 -->
+    <a href="https://www.youtube.com/playlist?list=PLdjM8wRcBQnlQJ4VHuO9mnhRpwDnDdfhp" target="_blank" class="bp-card">
+      <div class="bp-icon-wrap">
+        <img src="images/sermon_on_the_mount.png" alt="산상수훈 시리즈 Sermon on the Mount" class="bp-icon" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+        <div class="bp-fallback" style="display:none;">⛰️</div>
+      </div>
+      <div class="bp-info">
+        <strong class="bp-title">산상수훈 시리즈 <span>Sermon on the Mount</span></strong>
+        <span class="bp-count">10 동영상</span>
+      </div>
+    </a>
+
+    <!-- 5. 성경을 어떻게 읽을 것인가 -->
+    <a href="https://www.youtube.com/playlist?list=PLdjM8wRcBQnmqI9vhJYD4UUySu4P36oTH" target="_blank" class="bp-card">
+      <div class="bp-icon-wrap">
+        <img src="images/how_to_read_the_bible.png" alt="성경을 어떻게 읽을 것인가 How to Read the Bible" class="bp-icon" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+        <div class="bp-fallback" style="display:none;">📖</div>
+      </div>
+      <div class="bp-info">
+        <strong class="bp-title">성경을 어떻게 읽을 것인가 <span>How to Read the Bible</span></strong>
+        <span class="bp-count">19 동영상</span>
+      </div>
+    </a>
+
+    <!-- 6. 인사이트 시리즈 -->
+    <a href="https://www.youtube.com/@BibleProjectKorean/search?query=%EC%9D%B8%EC%82%AC%EC%9D%B4%ED%8A%B8" target="_blank" class="bp-card">
+      <div class="bp-icon-wrap">
+        <img src="images/insights.png" alt="인사이트 시리즈 Insights" class="bp-icon" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+        <div class="bp-fallback" style="display:none;">💡</div>
+      </div>
+      <div class="bp-info">
+        <strong class="bp-title">인사이트 시리즈 <span>Insights</span></strong>
+        <span class="bp-count">20 동영상</span>
+      </div>
+    </a>
+
+    <!-- 7. 영적 존재들 시리즈 -->
+    <a href="https://www.youtube.com/playlist?list=PLdjM8wRcBQnmGHUxdr8be_BGtQoQEd0im" target="_blank" class="bp-card">
+      <div class="bp-icon-wrap">
+        <img src="images/spiritual_beings.png" alt="영적 존재들 시리즈 Spiritual Beings" class="bp-icon" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+        <div class="bp-fallback" style="display:none;">👼</div>
+      </div>
+      <div class="bp-info">
+        <strong class="bp-title">영적 존재들 시리즈 <span>Spiritual Beings</span></strong>
+        <span class="bp-count">8 동영상</span>
+      </div>
+    </a>
+
+    <!-- 8. 왕 같은 제사장 시리즈 -->
+    <a href="https://www.youtube.com/playlist?list=PLdjM8wRcBQnkOqihe5-7Hd6AZqW3kB69G" target="_blank" class="bp-card">
+      <div class="bp-icon-wrap">
+        <img src="images/the_royal_priest.png" alt="왕 같은 제사장 시리즈 The Royal Priest" class="bp-icon" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+        <div class="bp-fallback" style="display:none;">👑</div>
+      </div>
+      <div class="bp-info">
+        <strong class="bp-title">왕 같은 제사장 시리즈 <span>The Royal Priest</span></strong>
+        <span class="bp-count">6 동영상</span>
+      </div>
+    </a>
+
+    <!-- 9. 창조 시리즈 -->
+    <a href="https://www.youtube.com/playlist?list=PLdjM8wRcBQnlcemmExuckuHNqcl-RM_Ch" target="_blank" class="bp-card">
+      <div class="bp-icon-wrap">
+        <img src="images/creation.png" alt="창조 시리즈 Creation" class="bp-icon" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+        <div class="bp-fallback" style="display:none;">🌍</div>
+      </div>
+      <div class="bp-info">
+        <strong class="bp-title">창조 시리즈 <span>Creation</span></strong>
+        <span class="bp-count">5 동영상</span>
+      </div>
+    </a>
+
+    <!-- 10. 하나님의 성품 시리즈 -->
+    <a href="https://www.youtube.com/playlist?list=PLdjM8wRcBQnmOTPOttkXOOYLrL4T8CHZ7" target="_blank" class="bp-card">
+      <div class="bp-icon-wrap">
+        <img src="images/character_of_god.png" alt="하나님의 성품 시리즈 Character of God" class="bp-icon" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+        <div class="bp-fallback" style="display:none;">❤️</div>
+      </div>
+      <div class="bp-info">
+        <strong class="bp-title">하나님의 성품 시리즈 <span>Character of God</span></strong>
+        <span class="bp-count">6 동영상</span>
+      </div>
+    </a>
+
+    <!-- 11. 성경 원어 시리즈 -->
+    <a href="https://www.youtube.com/playlist?list=PLdjM8wRcBQnl3kG7ACa32KFZv5rb1YQhd" target="_blank" class="bp-card">
+      <div class="bp-icon-wrap">
+        <img src="images/word_studies.png" alt="성경 원어 시리즈 Word Studies" class="bp-icon" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+        <div class="bp-fallback" style="display:none;">🔤</div>
+      </div>
+      <div class="bp-info">
+        <strong class="bp-title">성경 원어 시리즈 <span>Word Studies</span></strong>
+        <span class="bp-count">2 동영상</span>
+      </div>
+    </a>
+
+    <!-- 12. 나쁜 단어 시리즈 -->
+    <a href="https://www.youtube.com/playlist?list=PLdjM8wRcBQnk4_bhWZXyERooDwxEa5O6n" target="_blank" class="bp-card">
+      <div class="bp-icon-wrap">
+        <img src="images/bad_words.png" alt="나쁜 단어 시리즈 Bad Words" class="bp-icon" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+        <div class="bp-fallback" style="display:none;">⚠️</div>
+      </div>
+      <div class="bp-info">
+        <strong class="bp-title">나쁜 단어 시리즈 <span>Bad Words</span></strong>
+        <span class="bp-count">3 동영상</span>
+      </div>
+    </a>
+
+    <!-- 13. 대림절 시리즈 -->
+    <a href="https://www.youtube.com/playlist?list=PLdjM8wRcBQnmIJFPq19BxCCvg0_oI8gYA" target="_blank" class="bp-card">
+      <div class="bp-icon-wrap">
+        <img src="images/advent_series.png" alt="대림절 시리즈 Advent Series" class="bp-icon" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+        <div class="bp-fallback" style="display:none;">🕯️</div>
+      </div>
+      <div class="bp-info">
+        <strong class="bp-title">대림절 시리즈 <span>Advent Series</span></strong>
+        <span class="bp-count">4 동영상</span>
+      </div>
+    </a>
+
+    <!-- 14. 누가복음-사도행전 -->
+    <a href="https://www.youtube.com/playlist?list=PLdjM8wRcBQnl9b37isaMQ4EBDx2qQzU5G" target="_blank" class="bp-card">
+      <div class="bp-icon-wrap">
+        <img src="images/luke_acts_series.png" alt="누가복음-사도행전 Luke-Acts Series" class="bp-icon" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+        <div class="bp-fallback" style="display:none;">📘</div>
+      </div>
+      <div class="bp-info">
+        <strong class="bp-title">누가복음-사도행전 <span>Luke-Acts Series</span></strong>
+        <span class="bp-count">9 동영상</span>
+      </div>
+    </a>
+
+    <!-- 15. 지혜서 시리즈 -->
+    <a href="https://www.youtube.com/playlist?list=PLdjM8wRcBQnn3UdWg3JntF4J0ur09tx7-" target="_blank" class="bp-card">
+      <div class="bp-icon-wrap">
+        <img src="images/wisdom_series.png" alt="지혜서 시리즈 Wisdom Series" class="bp-icon" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+        <div class="bp-fallback" style="display:none;">🦉</div>
+      </div>
+      <div class="bp-info">
+        <strong class="bp-title">지혜서 시리즈 <span>Wisdom Series</span></strong>
+        <span class="bp-count">3 동영상</span>
+      </div>
+    </a>
+
+    <!-- 16. 쉐마 시리즈 -->
+    <a href="https://www.youtube.com/playlist?list=PLdjM8wRcBQnlVLHifTMyLjKnBLmzNFHOc" target="_blank" class="bp-card">
+      <div class="bp-icon-wrap">
+        <img src="images/shema.png" alt="쉐마 시리즈 Shema" class="bp-icon" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+        <div class="bp-fallback" style="display:none;">👂</div>
+      </div>
+      <div class="bp-info">
+        <strong class="bp-title">쉐마 시리즈 <span>Shema</span></strong>
+        <span class="bp-count">6 동영상</span>
+      </div>
+    </a>
+
+    <!-- 17. 토라 시리즈 -->
+    <a href="https://www.youtube.com/playlist?list=PLdjM8wRcBQnnntorC9ULUDrTTdV82k3ar" target="_blank" class="bp-card">
+      <div class="bp-icon-wrap">
+        <img src="images/torah_series.png" alt="토라 시리즈 Torah Series" class="bp-icon" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+        <div class="bp-fallback" style="display:none;">📜</div>
+      </div>
+      <div class="bp-info">
+        <strong class="bp-title">토라 시리즈 <span>Torah Series</span></strong>
+        <span class="bp-count">7 동영상</span>
+      </div>
+    </a>
+  </div>
+</section>
+
+<style>
+  /* 기본 스타일 설정 */
+  .bp-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 24px 16px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  
+  .bp-header {
+    text-align: center;
+    margin-bottom: 28px;
+  }
+  
+  .bp-header h2 {
+    font-size: 24px;
+    font-weight: 700;
+    color: #111827;
+    margin: 0 0 8px 0;
+  }
+  
+  .bp-header p {
+    font-size: 15px;
+    color: #6b7280;
+    margin: 0;
+  }
+
+  /* 반응형 그리드 레이아웃 */
+  .bp-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 20px;
+    justify-items: center;
+  }
+
+  /* 카드 디자인 */
+  .bp-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 220px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 16px;
+    padding: 12px;
+    text-decoration: none;
+    box-sizing: border-box;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  }
+
+  .bp-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.08);
+    border-color: #d1d5db;
+  }
+
+  /* 200x200 아이콘 컨테이너 */
+  .bp-icon-wrap {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    max-width: 200px;
+    max-height: 200px;
+    border-radius: 12px;
+    overflow: hidden;
+    background-color: #f3f4f6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+
+  .bp-icon {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  /* 이미지 없을 때 표시되는 폴백 아이콘 */
+  .bp-fallback {
+    width: 100%;
+    height: 100%;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    font-size: 64px;
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    color: #1e40af;
+    user-select: none;
+  }
+
+  /* 카드 텍스트 정보 */
+  .bp-info {
+    margin-top: 12px;
+    text-align: center;
+    width: 100%;
+  }
+
+  .bp-title {
+    display: block;
+    font-size: 15px;
+    font-weight: 600;
+    color: #1f2937;
+    line-height: 1.3;
+  }
+
+  .bp-title span {
+    display: block;
+    font-size: 13px;
+    font-weight: 400;
+    color: #6b7280;
+    margin-top: 2px;
+  }
+
+  .bp-count {
+    display: inline-block;
+    margin-top: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #2563eb;
+    background-color: #eff6ff;
+    padding: 2px 8px;
+    border-radius: 12px;
+  }
+
+  /* 모바일 최적화 (2열 배치 조정) */
+  @media (max-width: 480px) {
+    .bp-grid {
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    .bp-card {
+      padding: 8px;
+    }
+
+    .bp-title {
+      font-size: 13px;
+    }
+
+    .bp-title span {
+      font-size: 11px;
+    }
+
+    .bp-count {
+      font-size: 11px;
+    }
+
+    .bp-fallback {
+      font-size: 40px;
+    }
+  }
+</style>
+
+    </div>
+  </div>
+</div>
+<script id="bp-video-js">
+(function(){
+  function openSheet(){
+    var s=document.getElementById("sheet-bible-video");
+    if(s){ s.hidden=false; document.body.style.overflow="hidden"; }
+  }
+  function closeSheet(){
+    var s=document.getElementById("sheet-bible-video");
+    if(s){ s.hidden=true; document.body.style.overflow=""; }
+  }
+  document.addEventListener("click",function(e){
+    if(e.target.closest("#btn-bible-video")){ e.preventDefault(); openSheet(); return; }
+    if(e.target.closest('[data-close="sheet-bible-video"]') || (e.target.id==="sheet-bible-video" && e.target.classList.contains("sheet-bg"))){
+      closeSheet();
+    }
+  });
+  document.addEventListener("keydown",function(e){
+    if(e.key==="Escape"){
+      var s=document.getElementById("sheet-bible-video");
+      if(s && !s.hidden) closeSheet();
+    }
+  });
+})();
+</script>
+
 </body>
 </html>
