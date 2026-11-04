@@ -1419,7 +1419,7 @@ body.th-open{ overflow:hidden; }
 }
 @media (min-width:760px){ #today-home .th-card{ max-height:560px; } }
 #today-home .th-card img{
-  position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block;
+  position:absolute; inset:0; width:100%; height:100%; min-width:100%; min-height:100%; object-fit:cover; object-position:center center; display:block;
 }
 #today-home .th-veil{
   position:absolute; inset:0;
@@ -4497,7 +4497,10 @@ $('btn-assign-ok').onclick=async ()=>{
       delete parsed.__meta;
       const books=Object.keys(parsed);
       if(!books.length){ toast(file.name+': 구절 없음 (형식 확인)'); console.warn('parse fail', file.name, meta); continue; }
-      { let fx=hanjaFixCode(code, parsed); fx=normalizeVersionCode(fx); code=normalizeVersionCode(code); if(fx!==code){ toast((VERSION_LABELS[code]||code)+' → '+(VERSION_LABELS[fx]||fx)+' (한자 포함 본문)'); code=fx; } else code=fx; }
+      /* 파일명 추정과 사용자가 선택한 목록을 최우선으로 사용한다.
+         본문에 한자가 일부 포함됐다는 이유로 개역개정/바른성경을
+         국한문판으로 재분류하면 두 번역본의 저장 키가 충돌한다. */
+      code=normalizeVersionCode(code);
       if(!bibleByVersion[code]) bibleByVersion[code]={};
       books.forEach(b=>{ if(!bibleByVersion[code][b]) bibleByVersion[code][b]={}; Object.assign(bibleByVersion[code][b], parsed[b]); });
       if(!loadedVersionCodes.includes(code)) loadedVersionCodes.push(code);
@@ -12249,6 +12252,11 @@ if(photoCard){
     swipeActive=false;
     var dx=e.changedTouches[0].clientX-swipeX, dy=e.changedTouches[0].clientY-swipeY;
     if(Math.abs(dx)<55||Math.abs(dx)<Math.abs(dy)*1.25)return;
+    /* 마지막 사진에서 왼쪽 스와이프는 사진 넘김이 아니라 본문 전환으로 처리 */
+    if(dx<0){
+      var dots=document.querySelectorAll('.th-photo-dot');
+      if(!dots.length || dots[dots.length-1].classList.contains('on')) return;
+    }
     showPhotoHistory(dx<0?1:-1);
   },{passive:true});
 }
@@ -12875,18 +12883,23 @@ html body .app-bar .bar-row>#btn-today{order:-1}
  function setP(p,mode){R.style.setProperty('--v9-p',p.toFixed(3));R.classList.toggle('v9-h2r',mode==='h2r');R.classList.toggle('v9-r2h',mode==='r2h');}
  function place(hx,rx,anim){
    const h=home();
+   if(!h)return;
+   h.style.backfaceVisibility='hidden';
+   h.style.webkitBackfaceVisibility='hidden';
    h.style.transition=anim?'transform .3s cubic-bezier(.22,.8,.3,1)':'none';
-   h.style.transform='translateX('+hx+'px)';
+   h.style.transform='translate3d('+hx+'px,0,0)';
    readerEls().forEach(e=>{e.style.setProperty('transition',anim?'transform .3s cubic-bezier(.22,.8,.3,1)':'none','important');e.style.setProperty('transform','translateX('+rx+'px)','important');});
  }
  function clear(){
    R.classList.remove('v9-h2r','v9-r2h','v9-settle');R.style.removeProperty('--v9-p');
-   const h=home();if(h){h.style.transition='';h.style.transform='';}
+   const h=home();if(h){h.style.transition='';h.style.transform='';h.style.removeProperty('backface-visibility');h.style.removeProperty('-webkit-backface-visibility');}
    readerEls().forEach(e=>{e.style.removeProperty('transition');e.style.removeProperty('transform');});
+   B.style.removeProperty('overflow');
    busy=false;
  }
  function settle(hx,rx,p,mode,done){
    busy=true;R.classList.add('v9-settle');
+   B.style.overflow='hidden';
    requestAnimationFrame(()=>{place(hx,rx,true);setP(p,mode);});
    setTimeout(()=>{done&&done();clear();},340);
  }
@@ -12942,7 +12955,8 @@ html body .app-bar .bar-row>#btn-today{order:-1}
      try{
        if(typeof splitMode!=='undefined' && splitMode==='cols'){ st=null; return; }
      }catch(err){}
-     st.on=true;
+   st.on=true;
+     B.style.overflow='hidden';
      if(st.mode==='r2h')window.__thOpenHome();
    }
    e.cancelable&&e.preventDefault();
@@ -13702,12 +13716,12 @@ function injectCSS(){
 '.bgm-acts button{flex:1;min-width:40%;padding:8px 4px;border-radius:8px;border:1px solid #3a3530;background:#25211a;color:#e8e0d4;font-size:12px;font-weight:700}',
 '.bgm-acts button.apply{background:#c9a227;color:#1a1714;border-color:#c9a227}',
 '.bgm-acts button.del{color:#e88}',
-'.bgm-backup{flex-shrink:0;padding:8px 14px 14px;border-top:1px solid #2e2a24}',
+'.bgm-backup{flex-shrink:0;padding:8px 14px calc(30px + env(safe-area-inset-bottom, 0px));border-top:1px solid #2e2a24}',
 '.bgm-bk-title{font-size:12px;font-weight:800;color:#ffd45c;margin-bottom:6px}',
 '.bgm-bk-row{display:flex;gap:8px}',
 '.bgm-bk-row button{flex:1;min-width:0;height:36px;border-radius:10px;border:1px solid #4a4336;background:#2a261f;color:#f0e8d8;font-size:12.5px;font-weight:700;cursor:pointer}',
 '.bgm-bk-row button:first-child{background:#ffd45c;border-color:#ffd45c;color:#1a1714}',
-'.bgm-bk-info{margin-top:6px;font-size:11px;color:#9a9288;line-height:1.5}',
+'.bgm-bk-info{margin-top:6px;padding-bottom:8px;font-size:11px;color:#9a9288;line-height:1.5}',
 '.bgm-foot{flex-shrink:0;padding:8px 14px 12px;border-top:1px solid #2e2a24;font-size:12px;color:#9a9288}',
 '.bgm-note{font-size:12px;color:#9a9288;line-height:1.5;padding:0 0 10px}',
 /* 분류 선택 모달 */
@@ -13747,10 +13761,12 @@ function openMgr(){
     sheet.innerHTML = [
 '<div id="bg-mgr-panel" style="position:relative">',
  ' <div class="bgm-head"><h2>배경 관리</h2><button type="button" class="bgm-tog" id="bgm-tog" aria-expanded="false" aria-controls="bgm-tools">⚙ 도구</button><button type="button" class="bgm-close" id="bgm-x">✕</button></div>',
-' <div class="bgm-tabs">',
-'  <button type="button" data-tab="mine" class="on">내 배경</button>',
-'  <button type="button" data-tab="tpl">템플릿</button>',
-' </div>',
+ ' <div class="bgm-tabs">',
+ '  <button type="button" data-tab="mine" class="on">내 배경</button>',
+ '  <button type="button" data-tab="tpl">템플릿</button>',
+ '  <button type="button" data-tab="today">오늘의 말씀</button>',
+ '  <button type="button" data-tab="design">디자인</button>',
+ ' </div>',
 ' <div class="bgm-pane on" id="pane-mine">',
 '  <div class="bgm-add-row">',
 '   <label class="bgm-add-btn">+ 갤러리에서 사진 추가<input type="file" id="bgm-file" accept="image/*" multiple></label>',
@@ -13795,6 +13811,18 @@ function openMgr(){
     sheet.querySelectorAll('.bgm-tabs button').forEach(function(b){
       b.onclick = function(){
         var tab=b.dataset.tab;
+        if(tab==='today'){
+          sheet.hidden=true;
+          var todaySheet=document.getElementById('sheet-bg-select');
+          if(todaySheet){ todaySheet.hidden=false; document.body.style.overflow='hidden'; }
+          return;
+        }
+        if(tab==='design'){
+          sheet.hidden=true;
+          var designBtn=document.getElementById('th-design');
+          if(designBtn){ designBtn.click(); }
+          return;
+        }
         sheet.querySelectorAll('.bgm-tabs button').forEach(function(x){ x.classList.toggle('on',x===b); });
         $('pane-mine').classList.toggle('on', tab==='mine');
         $('pane-tpl').classList.toggle('on', tab==='tpl');
@@ -14122,6 +14150,8 @@ function wireBackup(sheet){
   bs.onclick=function(){
     try{
       var b=build(), blob=new Blob([b.json],{type:'application/json'}), url=URL.createObjectURL(blob), a=document.createElement('a');
+      var api=window.AndroidShare||window.Android;
+      if(api && typeof api.saveText==='function'){ api.saveText(b.name,b.json); toast('백업 저장 창을 엽니다'); return; }
       a.href=url; a.download=b.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(url); },4000);
       toast('백업 파일을 저장합니다 ('+(b.json.length/1048576).toFixed(1)+'MB) · 저장이 안 되면 「백업 공유」를 쓰세요');
     }catch(e){ toast('백업 실패: '+(e&&e.message||e)); }
@@ -14131,7 +14161,7 @@ function wireBackup(sheet){
       var b=build(), file=new File([b.json],b.name,{type:'application/json'});
       if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){ navigator.share({files:[file],title:'따봉성경 백업'}).catch(function(){}); return; }
       var api=window.AndroidShare||window.Android;
-      if(api && typeof api.shareText==='function' && b.json.length<300000){ api.shareText(b.json); toast('공유 창을 엽니다'); return; }
+      if(api && typeof api.shareText==='function'){ api.shareText(b.json); toast('공유 창을 엽니다'); return; }
       toast('이 기기에서는 큰 백업을 공유창으로 보낼 수 없습니다. 「백업 저장」을 쓰거나 웹브라우저에서 이 앱을 열어 백업하세요');
     }catch(e){ toast('공유 실패: '+(e&&e.message||e)); }
   };
@@ -20901,6 +20931,42 @@ html body.v34-layout-bottom:not(#v9x) #layout-menu-dock.dock-bottom>#hdr-strip{f
   render('read');
 })();
 </script>
+
+<style id="final-today-layout-fix">
+/* 오늘의 말씀 전용 헤더는 카드와 같은 폭으로 고정 */
+html body #today-home{overflow-x:hidden!important;}
+html body #today-home .th-bar{
+  width:calc(100% - 24px)!important; max-width:560px!important; margin:0 auto!important;
+  padding:8px 0!important; box-sizing:border-box!important; overflow:visible!important;
+}
+html body #today-home .th-brand{flex:1 1 auto!important; min-width:0!important; overflow:hidden!important;}
+html body #today-home .th-actions{
+  flex:0 0 auto!important; margin-left:auto!important; min-width:max-content!important;
+  justify-content:flex-end!important; overflow:visible!important; gap:3px!important;
+}
+html body #today-home .th-actions>button,
+html body #today-home .th-actions #bg-mgr-btn,
+html body #today-home .th-actions .th-go-bible{
+  flex:0 0 34px!important; width:34px!important; min-width:34px!important;
+  max-width:34px!important; height:34px!important; min-height:34px!important;
+  max-height:34px!important; transform:none!important;
+}
+html body #today-home .th-scroll{overflow-x:hidden!important;}
+html body #today-home .th-wrap{width:100%!important; max-width:560px!important; margin:0 auto!important; box-sizing:border-box!important;}
+html body #today-home .th-card{width:100%!important; max-width:100%!important; min-width:0!important; margin-left:auto!important; margin-right:auto!important;}
+@media(max-width:600px){
+  html body #today-home .th-bar{width:calc(100% - 16px)!important; padding:7px 0!important; gap:4px!important;}
+  html body #today-home .th-actions{gap:1px!important;}
+  html body #today-home .th-actions>button,
+  html body #today-home .th-actions #bg-mgr-btn,
+  html body #today-home .th-actions .th-go-bible{
+    flex-basis:32px!important; width:32px!important; min-width:32px!important; max-width:32px!important;
+    height:32px!important; min-height:32px!important; max-height:32px!important; border-radius:9px!important;
+  }
+  html body #today-home .th-actions>button svg{width:18px!important;height:18px!important;}
+  html body #today-home .th-apptitle{font-size:clamp(14px,4.5vw,18px)!important;}
+}
+</style>
 
 </body>
 </html>
