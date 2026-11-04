@@ -10,7 +10,7 @@ if(window.__ddStore) return;
 var ls, nGet, nSet, nRem, nClear;
 try{ ls=window.localStorage; nGet=Storage.prototype.getItem; nSet=Storage.prototype.setItem; nRem=Storage.prototype.removeItem; nClear=Storage.prototype.clear; }catch(e){ return; }
 var THRESH=60000, IDX='ddabong__bigkeys', DBN='ddabongStore', STO='kv';
-var mem={}, big={}, touched={}, dropped={}, ready=false, useIdb=!!window.indexedDB, dbp=null;
+var pending=[]; var mem={}, big={}, touched={}, dropped={}, ready=false, useIdb=!!window.indexedDB, dbp=null;
 try{ big=JSON.parse(nGet.call(ls,IDX)||'{}')||{}; }catch(e){ big={}; }
 window.__storeReady=!useIdb;
 function saveIdx(){ try{ nSet.call(ls,IDX,JSON.stringify(big)); }catch(e){} }
@@ -27,7 +27,7 @@ function idbAll(){ return openDb().then(function(db){ return new Promise(functio
 
 function setBig(k,v,self){
   mem[k]=v; big[k]=1; touched[k]=1; saveIdx();
-  idbPut(k,v).catch(function(){ /* IDB 실패 시 localStorage 시도 */ try{ nSet.call(self,k,v); }catch(e){} });
+  pending.push(idbPut(k,v).catch(function(){ /* IDB 실패 시 localStorage 시도 */ try{ nSet.call(self,k,v); }catch(e){} }));
   try{ nRem.call(self,k); }catch(e){}
 }
 Storage.prototype.getItem=function(k){
@@ -85,6 +85,7 @@ window.__ddStore={
     var n=0; Object.keys(o.data).forEach(function(k){ if(k===IDX) return; var v=o.data[k]; if(typeof v==='string'){ ls.setItem(k,v); n++; } });
     return n;
   },
+  flush:function(){ return Promise.all(pending.slice()).then(function(){ pending.length=0; }); },
   estimate:function(){ try{ return navigator.storage&&navigator.storage.estimate?navigator.storage.estimate():Promise.resolve(null); }catch(e){ return Promise.resolve(null); } },
   bigKeys:function(){ return Object.keys(big); }
 };
@@ -1691,6 +1692,168 @@ body>.sheet-bg:not(#sheet-menu):not([hidden])>.sheet{position:relative!important
 }
 </style>
 
+
+
+
+
+
+
+
+<style id="bg-select-style">
+#sheet-bg-select .sheet{
+  max-height:92dvh;padding:8px 10px 10px;display:flex;flex-direction:column;min-height:0;box-sizing:border-box
+}
+#sheet-bg-select .sheet-close{
+  position:absolute;top:8px;right:8px;z-index:5;
+  width:36px;height:36px;border-radius:10px;border:1px solid var(--line);
+  background:var(--card);font-size:18px;cursor:pointer;line-height:1
+}
+#sheet-bg-select h2{
+  margin:0 40px 6px 0;font-size:16px;font-weight:800;flex-shrink:0;line-height:36px
+}
+#sheet-bg-select .bg-chips{
+  display:flex;flex-wrap:nowrap;gap:5px;overflow-x:auto;scrollbar-width:none;
+  padding:0 0 6px;flex-shrink:0;-webkit-overflow-scrolling:touch
+}
+#sheet-bg-select .bg-chips::-webkit-scrollbar{display:none}
+#sheet-bg-select .bg-chip{
+  flex:0 0 auto;padding:5px 10px;border-radius:999px;border:1px solid var(--line);
+  font-size:12px;font-weight:600;background:var(--card);color:var(--ink);cursor:pointer;white-space:nowrap
+}
+#sheet-bg-select .bg-chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+#sheet-bg-select .bg-square-row{
+  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin-bottom:6px;flex-shrink:0
+}
+#sheet-bg-select .bg-sq{
+  appearance:none;border:1px solid var(--line);background:var(--card);border-radius:8px;
+  min-height:36px;padding:6px 2px;font-size:11px;font-weight:700;cursor:pointer
+}
+#sheet-bg-select .bg-long-row{margin-bottom:4px;flex-shrink:0}
+#sheet-bg-select .bg-long{
+  appearance:none;width:100%;border:0;background:var(--accent);color:#fff;border-radius:10px;
+  min-height:40px;padding:8px;font-size:14px;font-weight:700;cursor:pointer
+}
+#sheet-bg-select .bg-status{font-size:11px;color:var(--muted);min-height:14px;margin:0 0 4px;flex-shrink:0}
+#sheet-bg-select .bg-status.has-sel{color:var(--accent);font-weight:700}
+#sheet-bg-select .bg-grid{
+  display:grid !important;
+  grid-template-columns:repeat(3,minmax(0,1fr)) !important;
+  gap:8px !important;
+  flex:1 1 auto;min-height:0;
+  overflow-y:auto;overflow-x:hidden;
+  padding:2px 0 4px;align-content:start !important;
+  -webkit-overflow-scrolling:touch
+}
+@media(min-width:480px){#sheet-bg-select .bg-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important}}
+#sheet-bg-select .bg-card{
+  position:relative !important;width:100% !important;height:0 !important;padding-bottom:100% !important;
+  margin:0 !important;border-radius:10px !important;overflow:hidden !important;
+  border:2px solid transparent !important;background:#2a2a2a !important;box-sizing:border-box !important;cursor:pointer;
+  
+}
+#sheet-bg-select .bg-card > *{position:absolute !important}
+#sheet-bg-select .bg-card img{
+  top:0 !important;left:0 !important;width:100% !important;height:100% !important;
+  object-fit:cover !important;display:block !important;border:0 !important;margin:0 !important;pointer-events:none;z-index:0
+}
+#sheet-bg-select .bg-card .bg-label{
+  left:0;right:0;bottom:0;z-index:2;padding:3px 4px;background:rgba(0,0,0,.55);color:#fff;
+  font-size:9px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none
+}
+#sheet-bg-select .bg-card .bg-check{
+  display:none !important;top:5px;left:5px;z-index:3;width:24px;height:24px;border-radius:50%;
+  background:var(--accent);color:#fff;font-size:13px;font-weight:800;align-items:center;justify-content:center
+}
+#sheet-bg-select .bg-card.selected{border-color:var(--accent)!important;box-shadow:0 0 0 2px var(--accent)}
+#sheet-bg-select .bg-card.selected .bg-check{display:flex !important}
+#sheet-bg-select .bg-card.selected .bg-label{background:var(--accent);font-weight:700}
+#sheet-bg-select .bg-card .bg-del{
+  top:4px;right:4px;z-index:4;width:22px;height:22px;border-radius:50%;border:none;
+  background:rgba(200,0,0,.9);color:#fff;font-size:13px;cursor:pointer;padding:0;
+  display:flex;align-items:center;justify-content:center;line-height:1
+}
+#sheet-bg-select .bg-card .bg-edit{
+  top:4px;right:28px;z-index:4;width:22px;height:22px;border-radius:50%;border:none;
+  background:rgba(30,30,30,.7);color:#fff;font-size:11px;cursor:pointer;padding:0;
+  display:flex;align-items:center;justify-content:center;line-height:1
+}
+#sheet-bg-select .bg-hint{display:none !important}
+#sheet-bg-select .bg-more{display:none !important}
+</style>
+
+
+<style id="v62-th-dock-hide">
+/* 오늘의 말씀 진입 시 좌우 도킹/패널 메뉴 강제 숨김 */
+html body.th-open #layout-menu-dock,
+html body.th-open #layout-menu-dock.dock-left,
+html body.th-open #layout-menu-dock.dock-right,
+html body.th-open #panel-tools-tog,
+html body.th-open #focus-play-tog,
+html body.th-open #focus-show,
+html body.th-open #focus-show-b,
+html body.th-open .sdock,
+html body.th-open #bright-dock,
+html body.th-open #size-dock,
+html body.th-open #vol-dock,
+html body.th-open #gap-dock,
+html body.th-open #fab-bar{
+  display:none !important;
+  visibility:hidden !important;
+  pointer-events:none !important;
+  opacity:0 !important;
+  left:-9999px !important;
+  right:auto !important;
+  z-index:-1 !important;
+}
+</style>
+
+<style id="v85-bg-scroll-fix">
+/* v85: 배경 선택 시트 스크롤 보강 (터치 스크롤이 그리드로 전달되고, 바깥 시트/본문으로 번지지 않게) */
+#sheet-bg-select .sheet{overflow:hidden!important}
+#sheet-bg-select .bg-grid{overflow-y:auto!important;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;will-change:auto}
+#sheet-bg-select .bg-card{content-visibility:visible!important}
+</style>
+<style id="v56-home-hide-panels">
+/* v56: 오늘의 말씀 화면에서는 좌우 도킹 메뉴와 패널(밝기/크기/음량/간격)을 완전히 숨김 */
+html body.th-open:not(#v56x):not(#v56y) #layout-menu-dock,
+html body.th-open:not(#v56x):not(#v56y) #panel-tools-tog,
+html body.th-open:not(#v56x):not(#v56y) #size-dock,
+html body.th-open:not(#v56x):not(#v56y) #vol-dock,
+html body.th-open:not(#v56x):not(#v56y) #gap-dock,
+html body.th-open:not(#v56x):not(#v56y) #bright-dock,
+html body.th-open:not(#v56x):not(#v56y) .sdock,
+html body.th-open:not(#v56x):not(#v56y) .sdock-tab,
+html body.th-open:not(#v56x):not(#v56y) .sdock-panel,
+html body.th-open:not(#v56x):not(#v56y) #bright-tab,
+html body.th-open:not(#v56x):not(#v56y) #bright-panel,
+html body.th-open:not(#v56x):not(#v56y) #focus-play-tog,
+html body.th-open:not(#v56x):not(#v56y) #focus-show,
+html body.th-open:not(#v56x):not(#v56y) #focus-show-b{display:none!important;visibility:hidden!important;pointer-events:none!important}
+</style>
+<style id="v86-bg-scroll-fix">
+/* v86: 구형 WebView(dvh 미지원)에서도 스크롤되도록 vh 대체값 + 스크롤러를 시트 하나로 통일 */
+#sheet-bg-select .sheet{display:block!important;max-height:92vh!important;max-height:92dvh!important;overflow-y:auto!important;overflow-x:hidden!important;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y}
+#sheet-bg-select .bg-grid{overflow:visible!important;max-height:none!important;flex:none!important;touch-action:pan-y}
+#sheet-bg-select .bg-chips{touch-action:pan-x pan-y}
+#sheet-bg-select .sheet-close{position:sticky!important;float:right;top:0;z-index:6}
+/* ===== v86-fix: 모바일 배경관리 도구 접기 + 사진 그리드 최대화 ===== */
+#sheet-bg-select #bg-ctrl-tog{display:none}
+#sheet-bg-select #bg-ctrl-wrap{display:block;flex:0 0 auto;min-height:0}
+@media (max-width:768px){
+  #sheet-bg-select .sheet{max-height:88vh;max-height:88dvh}
+  #sheet-bg-select #bg-ctrl-tog{display:inline-flex;align-items:center;gap:4px;margin:-4px 0 8px;padding:7px 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:12.5px;font-weight:700;cursor:pointer;flex:0 0 auto}
+  #sheet-bg-select #bg-ctrl-wrap.collapsed{display:none!important}
+  #sheet-bg-select .bg-grid{flex:1 1 auto;min-height:0;padding-bottom:max(12px,env(safe-area-inset-bottom,0px))}
+  #sheet-bg-select h2{margin-bottom:2px}
+}
+#bg-mgr-sheet .bgm-head .bgm-tog{width:auto;padding:0 10px;margin-right:8px;height:36px;border-radius:10px;border:1px solid #3a3530;background:#25211a;color:#ffd45c;font-size:12px;font-weight:700;flex:0 0 auto;cursor:pointer}
+@media (max-width:768px){
+  #bg-mgr-panel{max-height:88vh;max-height:88dvh}
+  #bg-mgr-sheet:not(.mgr-open) .bgm-add-row,
+  #bg-mgr-sheet:not(.mgr-open) .bgm-foot,
+  #bg-mgr-sheet:not(.mgr-open) .bgm-backup{display:none!important}
+}
+</style>
 </head>
 <body>
 <!-- ===== [TH] 오늘의 말씀 홈 레이어 (첫 화면) ===== -->
@@ -1822,6 +1985,7 @@ body>.sheet-bg:not(#sheet-menu):not([hidden])>.sheet{position:relative!important
       <button class="icon-btn" id="h-copy" type="button" title="복사(선택한 절)" aria-label="복사"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></button>
       <button class="icon-btn" id="h-memo" type="button" title="메모(선택한 절)" aria-label="메모">📌</button>
       <button class="icon-btn" id="h-image" type="button" title="영상·이미지 카드" aria-label="영상">🎨</button>
+      <button class="icon-btn" id="btn-bg-select" type="button" title="배경 선택" aria-label="배경 선택">🖼️</button>
       <button class="icon-btn bp-video-btn" id="btn-bible-video" type="button" title="성경 동영상 (BibleProject)" aria-label="성경 동영상">
         <svg class="bp-play-svg" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="9" class="bp-ring"/>
@@ -1863,6 +2027,8 @@ body>.sheet-bg:not(#sheet-menu):not([hidden])>.sheet{position:relative!important
       <select id="sel-version-a-head" aria-label="화면1 번역판" title="번역판"></select>
       <span id="pane-title-a" style="display:none">화면 1</span>
       <button type="button" class="pane-read-btn on" id="pane-read-a" title="이 화면에서 낭독" aria-label="낭독">🔊</button>
+      <button type="button" class="pane-cmp-btn" id="pane-copy-a" title="선택 구절 복사" aria-label="구절 복사" hidden>📋</button>
+      <button type="button" class="pane-cmp-btn" id="pane-move-a" title="선택 구절을 반대 화면으로" aria-label="구절 이동" hidden>⇄</button>
     </div>
     <div class="pane-body" id="body-a">
       <div class="empty"><strong>따봉성경</strong>「메뉴 → 데이터 불러오기」로 성경 파일을 선택하세요.<br>여러 번역판을 불러와 비교·검색·낭독할 수 있습니다.</div>
@@ -1875,6 +2041,8 @@ body>.sheet-bg:not(#sheet-menu):not([hidden])>.sheet{position:relative!important
     <div class="pane-head">
       <select id="sel-version-b" aria-label="화면2 번역판" title="번역판"></select>
       <button type="button" class="pane-read-btn" id="pane-read-b" title="이 화면에서 낭독" aria-label="낭독">🔊</button>
+      <button type="button" class="pane-cmp-btn" id="pane-copy-b" title="선택 구절 복사" aria-label="구절 복사" hidden>📋</button>
+      <button type="button" class="pane-cmp-btn" id="pane-move-b" title="선택 구절을 반대 화면으로" aria-label="구절 이동" hidden>⇄</button>
     </div>
     <div class="pane-body" id="body-b"></div>
   </section>
@@ -2117,12 +2285,32 @@ html.v9-gap-on body .pane-body .verse{margin-bottom:var(--v9-gap,8px)!important}
 </div>
 
     <div class="logo-feature-tools"><span>전체 기능</span><label class="logo-menu-search"><span aria-hidden="true">🔍</span><input id="logo-menu-search" type="search" placeholder="메뉴 검색" aria-label="전체 기능 메뉴 검색"></label></div><div class="logo-feature-list" id="logo-feature-list">
-      <section class="feature-group" data-position-group="top">
+      <section class="feature-group" data-position-group="today">
+        <div class="feature-group-title">☀ 오늘의 말씀</div>
+        <div class="feature-group-items">
+<button class="logo-feature-item" data-target="btn-today" draggable="true"><span class="feature-icon">☀</span><b>오늘의 말씀</b></button>
+<button class="logo-feature-item" data-target="btn-open-today-note" draggable="true"><span class="feature-icon">📝</span><b>오늘의 묵상 기록</b></button>
+<button class="logo-feature-item" data-target="th-action-open-reader" draggable="true"><span class="feature-icon">📖</span><b>성경본문으로 이동</b></button>
+<button class="logo-feature-item" data-target="btn-bg-select" draggable="true"><span class="feature-icon">🖼️</span><b>배경관리</b></button>
+<button class="logo-feature-item" data-target="th-action-prev" draggable="true"><span class="feature-icon">‹</span><b>이전말씀</b></button>
+<button class="logo-feature-item" data-target="th-action-next" draggable="true"><span class="feature-icon">›</span><b>다음말씀</b></button>
+<button class="logo-feature-item" data-target="th-design" draggable="true"><span class="feature-icon">🎨</span><b>말씀디자인</b></button>
+<button class="logo-feature-item" data-target="th-share" draggable="true"><span class="feature-icon">📤</span><b>말씀카드공유</b></button>
+<button class="logo-feature-item" data-target="th-like" draggable="true"><span class="feature-icon">❤️</span><b>좋아요</b></button>
+<button class="logo-feature-item" data-target="th-save" draggable="true"><span class="feature-icon">💾</span><b>저장</b></button>
+<button class="logo-feature-item" data-target="th-copy" draggable="true"><span class="feature-icon">📋</span><b>말씀복사</b></button>
+<button class="logo-feature-item" data-target="th-note" draggable="true"><span class="feature-icon">📝</span><b>묵상기록</b></button>
+        </div>
+      </section>
+
+<section class="feature-group" data-position-group="top">
         <div class="feature-group-title">⌃ 상단 기능</div>
         <div class="feature-group-items">
-<button class="logo-feature-item" data-target="btn-load" draggable="true"><span class="feature-icon">📚</span><b>번역판 불러오기·추가</b></button><button class="logo-feature-item" data-target="h-font" draggable="true"><span class="feature-icon">🔤</span><b>글꼴 설정</b></button><button class="logo-feature-item" data-target="btn-search" draggable="true"><span class="feature-icon">🔍</span><b>성경 검색</b></button><button class="logo-feature-item" data-target="btn-goto" draggable="true"><span class="feature-icon">📍</span><b>성경 구절 찾기</b></button><button class="logo-feature-item" data-target="btn-split" draggable="true"><span class="feature-icon">▦</span><b>번역판 비교·화면 분할</b></button><button class="logo-feature-item" data-target="btn-fav" draggable="true"><span class="feature-icon">⭐</span><b>즐겨찾기</b></button><button class="logo-feature-item" data-target="btn-plan" draggable="true"><span class="feature-icon">☑</span><b>성경 일독 체크리스트</b></button><button class="logo-feature-item" data-target="h-memo" draggable="true"><span class="feature-icon">📌</span><b>메모 작성</b></button><button class="logo-feature-item" data-target="h-image" draggable="true"><span class="feature-icon">🎨️</span><b>이미지 카드</b></button><button class="logo-feature-item" data-target="h-clear" draggable="true"><span class="feature-icon">✖️</span><b>선택 해제</b></button><button class="logo-feature-item" data-target="h-share" draggable="true"><span class="feature-icon">📤</span><b>구절 공유</b></button><button class="logo-feature-item" data-target="h-copy" draggable="true"><span class="feature-icon">🗐</span><b>구절 복사</b></button><button class="logo-feature-item" data-target="h-compare" draggable="true"><span class="feature-icon">🔀</span><b>번역 비교</b></button><button class="logo-feature-item" data-target="btn-sound" draggable="true"><span class="feature-icon">🔊</span><b>소리 컨트롤</b></button><button class="logo-feature-item" data-target="btn-card-pin" draggable="true"><span class="feature-icon">📌</span><b>이미지 카드 고정</b></button><button class="logo-feature-item" data-target="btn-theme" draggable="true"><span class="feature-icon">🌙</span><b>화면 테마 전환</b></button><button class="logo-feature-item" data-target="btn-help" draggable="true"><span class="feature-icon">❔</span><b>도움말</b></button><button class="logo-feature-item" data-target="btn-menu" draggable="true"><span class="feature-icon">☰</span><b>기존 메뉴 열기</b></button>        </div>
+<button class="logo-feature-item" data-target="btn-load" draggable="true"><span class="feature-icon">📚</span><b>번역판 불러오기·추가</b></button><button class="logo-feature-item" data-target="h-font" draggable="true"><span class="feature-icon">🔤</span><b>글꼴 설정</b></button><button class="logo-feature-item" data-target="btn-search" draggable="true"><span class="feature-icon">🔍</span><b>성경 검색</b></button><button class="logo-feature-item" data-target="btn-goto" draggable="true"><span class="feature-icon">📍</span><b>성경 구절 찾기</b></button><button class="logo-feature-item" data-target="btn-split" draggable="true"><span class="feature-icon">▦</span><b>번역판 비교·화면 분할</b></button><button class="logo-feature-item" data-target="btn-fav" draggable="true"><span class="feature-icon">⭐</span><b>즐겨찾기</b></button><button class="logo-feature-item" data-target="btn-plan" draggable="true"><span class="feature-icon">☑</span><b>성경 일독 체크리스트</b></button><button class="logo-feature-item" data-target="h-memo" draggable="true"><span class="feature-icon">📌</span><b>메모 작성</b></button><button class="logo-feature-item" data-target="h-image" draggable="true"><span class="feature-icon">🎨️</span><b>이미지 카드</b></button><button class="logo-feature-item" data-target="h-clear" draggable="true"><span class="feature-icon">✖️</span><b>선택 해제</b></button><button class="logo-feature-item" data-target="h-share" draggable="true"><span class="feature-icon">📤</span><b>구절 공유</b></button><button class="logo-feature-item" data-target="h-copy" draggable="true"><span class="feature-icon">🗐</span><b>구절 복사</b></button><button class="logo-feature-item" data-target="h-compare" draggable="true"><span class="feature-icon">🔀</span><b>번역 비교</b></button><button class="logo-feature-item" data-target="btn-sound" draggable="true"><span class="feature-icon">🔊</span><b>소리 컨트롤</b></button><button class="logo-feature-item" data-target="btn-bible-video" draggable="true"><span class="feature-icon">▶</span><b>성경동영상</b></button><button class="logo-feature-item" data-target="btn-card-pin" draggable="true"><span class="feature-icon">📌</span><b>이미지 카드 고정</b></button><button class="logo-feature-item" data-target="btn-theme" draggable="true"><span class="feature-icon">🌙</span><b>화면 테마 전환</b></button><button class="logo-feature-item" data-target="btn-help" draggable="true"><span class="feature-icon">❔</span><b>도움말</b></button><button class="logo-feature-item" data-target="btn-menu" draggable="true"><span class="feature-icon">☰</span><b>기존 메뉴 열기</b></button>        </div>
       </section>
-      <section class="feature-group" data-position-group="panel"><div class="feature-group-title">▣ 패널 기능</div><div class="feature-group-items"><button class="logo-feature-item" data-target="vol-tab" draggable="true"><span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4h4l5 4V6l-5 4H4zM17 9a5 5 0 0 1 0 6M19 6a9 9 0 0 1 0 12"/></svg></span><b>낭독 음량</b></button><button class="logo-feature-item" data-target="size-tab" draggable="true"><span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5M4 5h16M20 5v14M8 9h8M8 13h5"/></svg></span><b>글자 크기</b></button><button class="logo-feature-item" data-target="bright-tab" draggable="true"><span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42"/></svg></span><b>화면 밝기</b></button><button class="logo-feature-item" data-target="btn-today" draggable="true"><span class="feature-icon">☀</span><b>오늘의 말씀</b></button><button class="logo-feature-item" data-target="btn-open-today-note" draggable="true"><span class="feature-icon">📝</span><b>오늘의 묵상 기록</b></button></div></section><section class="feature-group" data-position-group="bottom">
+      <section class="feature-group" data-position-group="panel"><div class="feature-group-title">▣ 패널 기능</div><div class="feature-group-items"><button class="logo-feature-item" data-target="vol-tab" draggable="true"><span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4h4l5 4V6l-5 4H4zM17 9a5 5 0 0 1 0 6M19 6a9 9 0 0 1 0 12"/></svg></span><b>낭독 음량</b></button><button class="logo-feature-item" data-target="gap-tab" draggable="true"><span class="feature-icon">↕</span><b>구절 간격</b></button><button class="logo-feature-item" data-target="size-tab" draggable="true"><span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5M4 5h16M20 5v14M8 9h8M8 13h5"/></svg></span><b>글자 크기</b></button><button class="logo-feature-item" data-target="bright-tab" draggable="true"><span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42"/></svg></span><b>화면 밝기</b></button></div></section>
+      
+      <section class="feature-group" data-position-group="bottom">
         <div class="feature-group-title">⌄ 하단 재생 기능</div>
         <div class="feature-group-items">
 <button class="logo-feature-item" data-target="btn-prev-chap2" draggable="true"><span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5v14M20 5L10 12l10 7z"/></svg></span><b>이전 장</b></button><button class="logo-feature-item" data-target="btn-prev" draggable="true"><span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></span><b>이전 절</b></button><button class="logo-feature-item" data-target="btn-play" draggable="true"><span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg></span><b>성경 낭독 재생</b></button><button class="logo-feature-item" data-target="btn-rate" draggable="true"><span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17a8 8 0 1 1 16 0"/><path d="M12 17l4-5"/></svg></span><b>낭독 배속</b></button><button class="logo-feature-item" data-target="btn-pause" draggable="true"><span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v14M15 5v14"/></svg></span><b>낭독 일시정지</b></button><button class="logo-feature-item" data-target="btn-next" draggable="true"><span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></span><b>다음 절</b></button><button class="logo-feature-item" data-target="btn-next-chap2" draggable="true"><span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 5v14M4 5l10 7-10 7z"/></svg></span><b>다음 장</b></button><button class="logo-feature-item" data-target="btn-menu-bottom" draggable="true"><span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg></span><b>하단 설정 메뉴</b></button><button class="logo-feature-item" data-target="btn-timer" draggable="true"><span class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="7"/><path d="M12 9v4l2.5 2M9 3h6"/></svg></span><b>수면 타이머</b></button><button class="logo-feature-item" data-target="btn-close-menu" draggable="true"><span class="feature-icon">✕</span><b>닫기</b></button><button class="logo-feature-item" data-target="btn-exit" draggable="true"><span class="feature-icon">⏻</span><b>종료</b></button><button class="logo-feature-item" data-target="open-reader-settings" draggable="true"><span class="feature-icon">⚙</span><b>성경 읽기 설정</b></button>        </div>
@@ -2458,27 +2646,28 @@ html.v9-gap-on body .pane-body .verse{margin-bottom:var(--v9-gap,8px)!important}
   </div>
 </div>
 
-<!-- 도움말 -->
+<!-- 따봉성경 도움말 센터 : 실제 앱 기능 연결형 -->
 <div class="sheet-bg" id="sheet-help" hidden>
-  <div class="sheet">
-    <button class="sheet-close" data-close="sheet-help">✕</button>
-    <h2>따봉성경 도움말</h2>
-    <div class="help-body">
-      <p>따봉성경은 한글 윈도우용 성경 검색 프로그램입니다. 성구와 성경절을 편리하게 찾을 수 있고, 성경을 장별로 읽거나 프레젠테이션할 수 있으며, 작성하는 문서에 쉽게 끼워 넣을 수 있습니다.</p>
-      <p><strong>따봉성경의 기능</strong></p>
-      <ol>
-        <li>찾고자 하는 낱말이 포함된 성경절을 찾아 출력창에 보여 주거나, 아래아한글·MS Word로 보낼 수 있습니다.</li>
-        <li>성경전체·구약·신약·범위 선택, AND/OR 검색, 한 번에 최대 3개 낱말 검색을 지원합니다.</li>
-        <li>성경절 찾기: 직접 입력 또는 책·장·절 선택. 여러 번역판을 한꺼번에 찾아 비교할 수 있습니다.</li>
-        <li>성경 보기: 장별 읽기, 여러 창에 다른 번역판을 띄워 비교, 장절 연동.</li>
-        <li>지원 번역: 개역한글판, 개역개정판, 바른성경, 새번역, 우리말성경, 쉬운성경, 공동번역, 한글킹제임스, 킹제임스흠정역, 현대인의성경, 현대어성경, HCSB, ISV, ESV, KJV, NKJV, NIV, TNIV, NRSV, NASB, NLT, MSG, GNT 등.</li>
-        <li>빠른 메뉴·단축키, 창 위치 기억, 출력 형식 설정 등을 지원합니다.</li>
-      </ol>
-      <p style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px">
-        <strong style="color:var(--ink)">이 모바일 웹 버전</strong><br>
-        데이터 불러오기·저장, 검색(AND/OR), 절 찾기(다번역), 화면 분할 비교, TTS 낭독, 글꼴·속도·테마
-      </p>
+  <div class="sheet help-center">
+    <div class="help-head">
+      <div>
+        <div class="help-kicker">DDABONG BIBLE · GUIDE</div>
+        <h2>따봉성경 사용 안내</h2>
+        <p>원하는 기능을 선택하고, 실제 버튼을 눌러 바로 실행하세요.</p>
+      </div>
+      <button class="sheet-close" data-close="sheet-help" aria-label="도움말 닫기">✕</button>
     </div>
+    <div class="help-layout">
+      <nav class="help-nav" id="help-nav" aria-label="도움말 항목"></nav>
+      <section class="help-content" aria-live="polite">
+        <div class="help-content-top">
+          <span class="help-step-label">사용 가이드</span>
+          <span class="help-current" id="help-current">성경 읽기</span>
+        </div>
+        <div id="help-detail"></div>
+      </section>
+    </div>
+    <div class="help-foot"><span>TIP</span> 버튼을 누르면 도움말이 닫히고 따봉성경의 해당 기능이 실행됩니다.</div>
   </div>
 </div>
 
@@ -7776,7 +7965,7 @@ updateShareLabels();
  document.getElementById('logo-feature-close')?.addEventListener('click',close);
  // Keep all three controls in the dedicated panel group, in the requested order.
  const panelGroup=list.querySelector('[data-position-group="panel"] .feature-group-items');
- if(panelGroup){['bright-tab','size-tab','vol-tab'].forEach(id=>{const item=list.querySelector('.logo-feature-item[data-target="'+id+'"]');if(item)panelGroup.appendChild(item);});}
+ if(panelGroup){['bright-tab','size-tab','vol-tab','gap-tab'].forEach(id=>{const item=list.querySelector('.logo-feature-item[data-target="'+id+'"]');if(item)panelGroup.appendChild(item);});}
  applySearch();
 })();
 </script>
@@ -8114,11 +8303,11 @@ body.scroll-menus-hidden:has(#layout-menu-dock.dock-right) .pane-body { padding-
  if(!panel||!list)return;
  const originalItems=Array.from(list.querySelectorAll('.logo-feature-item[data-target]'));
  const groups=[
-  {id:'top',title:'⌃ 상단기능',targets:['btn-sound','h-font','btn-load','btn-search','btn-goto','btn-split','btn-fav','btn-plan','btn-help','btn-theme','btn-menu']},
-  {id:'selected',title:'✦ 선택기능',targets:['h-memo','h-image','btn-card-pin','h-clear','h-share','h-copy','h-compare']},
-  {id:'panel',title:'▣ 패널기능',targets:['bright-tab','size-tab','vol-tab']},
-  {id:'playback',title:'▶ 하단 재생기능',targets:['btn-prev-chap2','btn-prev','btn-play','btn-rate','btn-pause','btn-next','btn-next-chap2','btn-menu-bottom','btn-timer']},
-  {id:'settings',title:'⚙ 앱설정·종료기능',targets:['btn-close-menu','btn-exit','open-reader-settings']}
+  {id:'today',title:'☀ 오늘의 말씀',targets:['btn-today','btn-open-today-note','th-action-open-reader','btn-bg-select','th-action-prev','th-action-next','th-design','th-share','th-like','th-save','th-copy','th-note']},
+  {id:'top',title:'⌃ 상단 기능',targets:['btn-sound','btn-bible-video','h-font','btn-load','btn-search','btn-goto','btn-split','btn-fav','btn-plan','h-memo','h-image','btn-card-pin','h-clear','h-share','h-copy','h-compare','btn-help','btn-theme','btn-menu']},
+  {id:'panel',title:'▣ 패널 기능',targets:['bright-tab','size-tab','vol-tab','gap-tab']},
+  {id:'playback',title:'⌄ 하단 재생 기능',targets:['btn-prev-chap2','btn-prev','btn-play','btn-rate','btn-pause','btn-next','btn-next-chap2','btn-menu-bottom','btn-timer']},
+  {id:'settings',title:'⚙ 앱설정·종료',targets:['btn-close-menu','btn-exit','open-reader-settings']}
  ];
  const known=new Set(groups.flatMap(g=>g.targets));
  // 이전 저장 배치로 인해 기능이 잘못된 그룹에 남아도 지정한 그룹으로 재배치
@@ -8136,9 +8325,11 @@ body.scroll-menus-hidden:has(#layout-menu-dock.dock-right) .pane-body { padding-
  const playback=list.querySelector('[data-position-group="playback"] .feature-group-items');
  originalItems.forEach(item=>{if(!known.has(item.dataset.target))playback.appendChild(item);});
  // 실제 버튼이 없는 메뉴 항목은 잘못된 실행을 유발하지 않도록 비활성화
+ const virtualTargets=new Set(['open-reader-settings','th-action-open-reader','th-action-prev','th-action-next']);
  originalItems.forEach(item=>{
   const id=item.dataset.target;
-  if(id!=='open-reader-settings'&&!document.getElementById(id)){item.disabled=true;item.title='연결된 기능을 찾을 수 없습니다';}
+  if(virtualTargets.has(id)) return;
+  if(!document.getElementById(id)){item.disabled=true;item.title='연결된 기능을 찾을 수 없습니다';}
  });
  function applySearch(){
   const q=(search?.value||'').trim().toLocaleLowerCase();
@@ -8171,6 +8362,21 @@ body.scroll-menus-hidden:has(#layout-menu-dock.dock-right) .pane-body { padding-
   if(id==='open-reader-settings'){
    const settings=document.getElementById('reader-settings-overlay');
    if(settings)settings.hidden=false;
+   return;
+  }
+  if(id==='th-action-open-reader'){
+   try{ if(typeof openReader==='function') openReader(); else if(window.__thOpenReader) window.__thOpenReader(); }catch(err){}
+   const b=document.getElementById('th-open-reader'); if(b) b.click();
+   return;
+  }
+  if(id==='th-action-prev'){
+   try{ if(typeof openHome==='function') openHome(); else if(window.__thOpenHome) window.__thOpenHome(); }catch(err){}
+   try{ if(window.__thPhotoHistory) window.__thPhotoHistory(-1); }catch(err){}
+   return;
+  }
+  if(id==='th-action-next'){
+   try{ if(typeof openHome==='function') openHome(); else if(window.__thOpenHome) window.__thOpenHome(); }catch(err){}
+   try{ if(window.__thPhotoHistory) window.__thPhotoHistory(1); }catch(err){}
    return;
   }
   const target=document.getElementById(id);
@@ -11385,9 +11591,9 @@ function renderPhotoDots(){
   var box=$('th-photo-dots'); if(!box) return;
   var keys=photoHistoryKeys(), current=PHOTO_VIEW_KEY||TH.key;
   box.innerHTML='';
-  var N=keys.length, MAXD=9, ci=keys.indexOf(current); if(ci<0) ci=N-1;
+  var N=keys.length, MAXD=7, ci=keys.indexOf(current); if(ci<0) ci=N-1;
   var s0=0, e0=N;
-  if(N>MAXD){ s0=Math.max(0,Math.min(N-MAXD,ci-4)); e0=s0+MAXD; }
+  if(N>MAXD){ s0=Math.max(0,Math.min(N-MAXD,ci-3)); e0=s0+MAXD; }
   function moreBtn(txt,target,label){
     var m=document.createElement('button'); m.type='button'; m.className='th-photo-more'; m.textContent=txt; m.title=label; m.setAttribute('aria-label',label);
     m.style.cssText='appearance:none;border:0;background:transparent;color:#ffd45c;font-size:15px;line-height:1;padding:0 3px;cursor:pointer';
@@ -11707,7 +11913,7 @@ function buildShareCard(dateOverride){
   var c=TH.c, now=dateOverride||kstNow();
   return new Promise(function(resolve,reject){
     if(!c) return reject(new Error('nocontent'));
-    var W=720, H=1080;
+    var W=1080, H=1620; /* 세로 긴 비율 (이전 카드와 동일 계열) */
     var cv=document.createElement('canvas'); cv.width=W; cv.height=H;
     var ctx=cv.getContext('2d');
     var finished=false;
@@ -11734,38 +11940,38 @@ function buildShareCard(dateOverride){
       vg.addColorStop(.76,'rgba(0,0,0,.46)'); vg.addColorStop(1,'rgba(0,0,0,.66)');
       ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
       var text=TH.text||refKo(c);
-      var maxW=W-120, fs=56;
+      var maxW=W-180, fs=84;
       var fam='"Nanum Myeongjo","Noto Serif KR","Malgun Gothic",serif';
       var lines;
-      while(fs>32){
+      while(fs>48){
         ctx.font='700 '+fs+'px '+fam;
         lines=wrapLines(ctx,text,maxW);
-        if(lines.length*fs*1.55<=440) break;
-        fs-=3;
+        if(lines.length*fs*1.55<=660) break;
+        fs-=4;
       }
       ctx.textAlign='center'; ctx.textBaseline='middle';
       ctx.font='700 '+fs+'px '+fam;
-      ctx.shadowColor='rgba(0,0,0,.62)'; ctx.shadowBlur=18;
+      ctx.shadowColor='rgba(0,0,0,.62)'; ctx.shadowBlur=26;
       ctx.fillStyle='#ffffff';
-      var lh=fs*1.55, top=(440-(lines.length*lh))/2+160;
+      var lh=fs*1.55, top=(660-(lines.length*lh))/2+250;
       for(var i=0;i<lines.length;i++) ctx.fillText(lines[i], W/2, top+lh*i+lh/2);
       ctx.shadowBlur=0;
-      var dy=top+lines.length*lh+44;
+      var dy=top+lines.length*lh+66;
       ctx.strokeStyle='rgba(255,255,255,.78)'; ctx.lineWidth=2;
-      ctx.beginPath(); ctx.moveTo(W/2-64,dy); ctx.lineTo(W/2-16,dy); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(W/2+16,dy); ctx.lineTo(W/2+64,dy); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(W/2-96,dy); ctx.lineTo(W/2-22,dy); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(W/2+22,dy); ctx.lineTo(W/2+96,dy); ctx.stroke();
       ctx.fillStyle='#ffffff'; ctx.beginPath();
-      ctx.moveTo(W/2,dy-8); ctx.lineTo(W/2+8,dy); ctx.lineTo(W/2,dy+8); ctx.lineTo(W/2-8,dy); ctx.closePath(); ctx.fill();
+      ctx.moveTo(W/2,dy-11); ctx.lineTo(W/2+11,dy); ctx.lineTo(W/2,dy+11); ctx.lineTo(W/2-11,dy); ctx.closePath(); ctx.fill();
       ctx.textAlign='left'; ctx.textBaseline='alphabetic';
-      ctx.font='800 28px "Malgun Gothic",sans-serif'; ctx.fillStyle='#ffd45c';
-      ctx.fillText('따봉성경', 40, H-120);
-      if(curVerLabel()){ ctx.font='500 17px "Malgun Gothic",sans-serif'; ctx.fillStyle='rgba(255,212,92,.8)'; ctx.fillText(curVerLabel(), 40, H-96); }
-      ctx.font='700 18px "Malgun Gothic",sans-serif'; ctx.fillStyle='#ffd45c';
-      ctx.fillText(refKo(c), 40, H-68);
-      ctx.textAlign='right'; ctx.font='400 16px "Malgun Gothic",sans-serif'; ctx.fillStyle='rgba(255,255,255,.78)';
-      ctx.fillText((now&&now.label)||'', W-40, H-68);
-      ctx.textAlign='left'; ctx.font='400 15px "Malgun Gothic",sans-serif'; ctx.fillStyle='rgba(255,255,255,.55)';
-      ctx.fillText('오늘의 말씀', 40, H-40);
+      ctx.font='800 42px "Malgun Gothic",sans-serif'; ctx.fillStyle='#ffd45c';
+      ctx.fillText('따봉성경', 76, H-182);
+      if(curVerLabel()){ ctx.font='500 17px "Malgun Gothic",sans-serif'; ctx.fillStyle='rgba(255,212,92,.8)'; ctx.fillText(curVerLabel(), 76, H-142); }
+      ctx.font='700 28px "Malgun Gothic",sans-serif'; ctx.fillStyle='#ffd45c';
+      ctx.fillText(refKo(c), 76, H-100);
+      ctx.textAlign='right'; ctx.font='400 24px "Malgun Gothic",sans-serif'; ctx.fillStyle='rgba(255,255,255,.78)';
+      ctx.fillText((now&&now.label)||'', W-76, H-100);
+      ctx.textAlign='left'; ctx.font='400 22px "Malgun Gothic",sans-serif'; ctx.fillStyle='rgba(255,255,255,.55)';
+      ctx.fillText('오늘의 말씀', 76, H-60);
       finishOk();
     }
     function paintWithImage(im){
@@ -12003,6 +12209,13 @@ function openHome(){
   var el=$('today-home'); if(!el) return;
   el.hidden=false; el.classList.remove('th-hidden');
   document.body.classList.add('th-open');
+  try{
+    var dock=document.getElementById('layout-menu-dock');
+    if(dock){ dock.setAttribute('data-th-hidden','1'); dock.style.setProperty('display','none','important'); }
+    document.querySelectorAll('.sdock,#bright-dock,#size-dock,#vol-dock,#gap-dock').forEach(function(d){
+      d.style.setProperty('display','none','important');
+    });
+  }catch(e){}
   syncBackBtn();
   render();
   try{ var sc=$('th-scroll'); if(sc) sc.scrollTop=0; }catch(e){}
@@ -12011,6 +12224,13 @@ function openReader(){
   var el=$('today-home'); if(!el) return;
   el.hidden=true; el.classList.add('th-hidden');
   document.body.classList.remove('th-open');
+  try{
+    var dock=document.getElementById('layout-menu-dock');
+    if(dock){ dock.removeAttribute('data-th-hidden'); dock.style.removeProperty('display'); }
+    document.querySelectorAll('.sdock,#bright-dock,#size-dock,#vol-dock,#gap-dock').forEach(function(d){
+      d.style.removeProperty('display');
+    });
+  }catch(e){}
   syncBackBtn();
   try{ updateBookLabel(); }catch(e){}
 }
@@ -13122,6 +13342,18 @@ var fixedId = null;
 var currentCat = 'all';
 var pendingFile = null; // 분류 선택 후 저장할 파일
 
+/* v86-fix: 모바일 배경관리 도구(사진추가/백업) 접기 토글 */
+document.addEventListener('click', function(e){
+  var t = e.target && e.target.closest ? e.target.closest('#bgm-tog') : null;
+  if(!t) return;
+  var sh = document.getElementById('bg-mgr-sheet');
+  if(!sh) return;
+  sh.classList.toggle('mgr-open');
+  var open = sh.classList.contains('mgr-open');
+  t.textContent = open ? '도구 닫기' : '⚙ 도구';
+  t.setAttribute('aria-expanded', open ? 'true' : 'false');
+});
+
 function $(id){ return document.getElementById(id); }
 function toast(msg){
   try{ if(typeof window.toast==='function'){ window.toast(String(msg)); return; } }catch(e){}
@@ -13514,14 +13746,14 @@ function openMgr(){
     sheet.hidden = true;
     sheet.innerHTML = [
 '<div id="bg-mgr-panel" style="position:relative">',
-' <div class="bgm-head"><h2>배경 관리</h2><button type="button" class="bgm-close" id="bgm-x">✕</button></div>',
+ ' <div class="bgm-head"><h2>배경 관리</h2><button type="button" class="bgm-tog" id="bgm-tog" aria-expanded="false" aria-controls="bgm-tools">⚙ 도구</button><button type="button" class="bgm-close" id="bgm-x">✕</button></div>',
 ' <div class="bgm-tabs">',
 '  <button type="button" data-tab="mine" class="on">내 배경</button>',
 '  <button type="button" data-tab="tpl">템플릿</button>',
 ' </div>',
 ' <div class="bgm-pane on" id="pane-mine">',
 '  <div class="bgm-add-row">',
-'   <label class="bgm-add-btn">+ 갤러리에서 사진 추가<input type="file" id="bgm-file" accept="image/jpeg,image/png,image/webp,image/*"></label>',
+'   <label class="bgm-add-btn">+ 갤러리에서 사진 추가<input type="file" id="bgm-file" accept="image/*" multiple></label>',
 '   <div class="bgm-sites-title">무료 사진 사이트 → 저장 후 위에서 추가</div>',
 '   <div class="bgm-sites-btns">',
 '    <a class="bgm-site" href="https://unsplash.com/s/photos/nature" target="_blank" rel="noopener">Unsplash</a>',
@@ -13541,7 +13773,7 @@ function openMgr(){
 '  </div>',
 '  <div class="bgm-body" id="bgm-body"></div>',
 '  <div class="bgm-foot" id="bgm-quota"></div>',
-'  <div class="bgm-backup" id="bgm-backup"><div class="bgm-bk-title">백업 · 복원</div><div class="bgm-bk-row"><button type="button" id="bgm-bk-save">백업 저장</button><button type="button" id="bgm-bk-share">백업 공유</button><button type="button" id="bgm-bk-load">불러오기</button></div><div class="bgm-bk-info" id="bgm-bk-info">저장공간 확인 중…</div><input type="file" id="bgm-bk-file" accept=".json,application/json" hidden></div>',
+'  <div class="bgm-backup" id="bgm-backup"><div class="bgm-bk-title">백업 · 복원</div><div class="bgm-bk-row"><button type="button" id="bgm-bk-save">백업 저장</button><button type="button" id="bgm-bk-share">백업 공유</button><button type="button" id="bgm-bk-load">불러오기</button></div><div class="bgm-bk-info" id="bgm-bk-info">저장공간 확인 중…</div><input type="file" id="bgm-bk-file" hidden></div>',
 ' </div>',
 ' <div class="bgm-pane" id="pane-tpl"><div class="bgm-body" id="tpl-body"></div></div>',
 ' <div class="bgm-pick" id="bgm-pick" hidden>',
@@ -13571,25 +13803,27 @@ function openMgr(){
     });
 
     sheet.querySelector('#bgm-file').onchange = function(){
-      var file = this.files && this.files[0];
       var input = this;
-      if(!file){ toast('파일 없음'); return; }
-      toast('사진 저장 중…');
-      fileToCompressedDataUrl(file).then(function(dataUrl){
-        input.value = '';
-        var r = addFromDataUrl(dataUrl, (file.name||'사진').replace(/\.[^.]+$/,''), 'custom');
-        if(r.ok){
-          toast('✓ 갤러리 사진 추가됨');
+      var files = Array.prototype.slice.call(input.files || []);
+      if(!files.length){ toast('파일 없음'); return; }
+      toast('사진 저장 중… ('+files.length+'장)');
+      var ok=0, fail=0, quota=false, i=0;
+      function next(){
+        if(i>=files.length){
+          input.value = '';
           currentCat = 'custom';
-          renderCats(); renderList(); updateQuota();
-        } else {
-          toast(r.reason==='quota' ? '저장 공간 부족 — 기존 사진을 일부 삭제해 주세요' : '저장 실패');
+          try{ renderCats(); renderList(); updateQuota(); }catch(e){}
+          if(ok) toast('✓ 갤러리 사진 '+ok+'장 추가됨'+(fail?' · 실패 '+fail+'장':''));
+          else toast(quota ? '저장 공간 부족 — 기존 사진을 일부 삭제해 주세요' : '저장 실패');
+          return;
         }
-      }).catch(function(err){
-        input.value = '';
-        console.error(err);
-        toast('실패: '+(err&&err.message?err.message:'오류'));
-      });
+        var file = files[i++];
+        fileToCompressedDataUrl(file).then(function(dataUrl){
+          var r = addFromDataUrl(dataUrl, (file.name||'사진').replace(/\.[^.]+$/,''), 'custom');
+          if(r.ok) ok++; else { fail++; if(r.reason==='quota') quota=true; }
+        }).catch(function(err){ fail++; console.error(err); }).then(next);
+      }
+      next();
     };
 
     sheet.querySelector('#bgm-pick-cancel').onclick = function(){
@@ -13915,7 +14149,7 @@ function wireBackup(sheet){
       info.appendChild(msg); info.appendChild(go); info.appendChild(no);
       no.onclick=function(){ bkInfo(); };
       go.onclick=function(){
-        try{ var n=S.importJson(text); toast('✓ '+n+'개 항목을 복원했습니다 · 앱을 다시 불러옵니다'); setTimeout(function(){ location.reload(); },1200); }
+        try{ var n=S.importJson(text); toast('✓ '+n+'개 항목을 복원하는 중… 잠시만 기다려 주세요'); var fl=(S.flush?S.flush():Promise.resolve()); Promise.race([fl,new Promise(function(r){ setTimeout(r,25000); })]).then(function(){ toast('✓ 복원 완료 · 앱을 다시 불러옵니다'); setTimeout(function(){ location.reload(); },900); }); }
         catch(e){ toast('복원 실패: '+(e&&e.message||e)); }
       };
     };
@@ -14693,7 +14927,7 @@ function downloadBlob(blob){
 }
 
 /* ================= v17: 탭형 공유 편집기 ================= */
-var FORMATS = { story:[720,1280], square:[720,720], portrait:[720,900] };
+var FORMATS = { story:[1080,1920], square:[1080,1080], portrait:[1080,1620] };
 function fmtSize(){
   var f = SHARE_STYLE.format;
   if(f === 'custom'){
@@ -14929,7 +15163,7 @@ function drawCard(verse, ref, cv){
 }
 
 function bgOnlyDataUrl(){
-  var W = 720, H = 960, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  var W = 1080, H = 1620, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   var ctx = cv.getContext('2d'); ctx.fillStyle = '#1a1714'; ctx.fillRect(0,0,W,H);
   var blur = Math.max(0, +SHARE_STYLE.blur || 0), bright = SHARE_STYLE.bright == null ? 100 : +SHARE_STYLE.bright;
   var im = BG.img, hasFilter = ('filter' in ctx);
@@ -15601,6 +15835,129 @@ console.log('[share-verse-edit v17] tabbed editor');
 #today-home .th-actions .th-go-bible:active{background:rgba(240,217,138,.14)!important;border-color:rgba(240,217,138,.6)!important}
 #today-home .th-actions>button:focus-visible{outline:1px solid rgba(240,217,138,.8);outline-offset:1px}
 </style>
+<style id="v77-th-bar">
+/* 상단: 로고 왼쪽 + 아이콘 전부 보이게 (잘림 금지) */
+html body #today-home .th-bar{
+  display:flex !important;
+  flex-direction:row !important;
+  flex-wrap:nowrap !important;
+  align-items:center !important;
+  justify-content:flex-start !important;
+  gap:6px !important;
+  padding:8px 8px 8px 10px !important;
+  width:100% !important;
+  max-width:100% !important;
+  box-sizing:border-box !important;
+  overflow:visible !important;
+}
+html body #today-home .th-brand{
+  flex:0 1 auto !important;
+  min-width:0 !important;
+  max-width:none !important;
+  margin:0 !important;
+  display:flex !important;
+  align-items:center !important;
+  gap:5px !important;
+  overflow:hidden !important;
+}
+html body #today-home .th-logo{width:32px!important;height:32px!important;font-size:16px!important;flex-shrink:0!important}
+html body #today-home .th-apptitle{
+  font-size:clamp(14px,3.8vw,18px)!important;
+  white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;
+}
+html body #today-home .th-actions{
+  flex:0 0 auto !important;
+  margin-left:auto !important;
+  display:flex !important;
+  flex-wrap:nowrap !important;
+  align-items:center !important;
+  justify-content:flex-end !important;
+  gap:4px !important;
+  overflow:visible !important;
+  max-width:none !important;
+  width:auto !important;
+  padding-right:0 !important;
+}
+html body #today-home .th-actions > button,
+html body #today-home .th-actions #bg-mgr-btn,
+html body #today-home .th-actions .th-go-bible{
+  flex:0 0 auto !important;
+  width:36px !important;
+  height:36px !important;
+  min-width:36px !important;
+  max-width:36px !important;
+  border-radius:10px !important;
+  position:static !important;
+  left:auto !important; right:auto !important;
+  transform:none !important; margin:0 !important;
+  overflow:visible !important;
+}
+html body #today-home .th-actions > button svg{width:19px!important;height:19px!important;flex-shrink:0!important}
+/* 메인 카드: 좌우 균형 (오른쪽 십자가 버튼 폭만큼 여백) */
+html body #today-home .th-wrap{
+  width:100% !important;
+  max-width:560px !important;
+  margin:0 auto !important;
+  padding-left:12px !important;
+  padding-right:12px !important;
+  box-sizing:border-box !important;
+}
+html body #today-home .th-card{
+  margin-left:0 !important;
+  margin-right:0 !important;
+  width:100% !important;
+  max-width:100% !important;
+  box-sizing:border-box !important;
+}
+/* 하단 점: 크게, 7개, 가운데, 왼쪽 공백 제거 / 십자가는 오른쪽 고정 */
+html body #today-home .th-photo-dots{
+  display:flex !important;
+  flex-wrap:nowrap !important;
+  align-items:center !important;
+  justify-content:center !important;
+  gap:10px !important;
+  min-height:36px !important;
+  margin:6px 0 4px !important;
+  padding:0 40px 0 8px !important;
+  position:relative !important;
+  width:100% !important;
+  box-sizing:border-box !important;
+}
+html body #today-home .th-photo-dot{
+  appearance:none !important;
+  border:0 !important;
+  background:transparent !important;
+  color:#9a9288 !important;
+  padding:0 !important;
+  margin:0 !important;
+  font-size:22px !important;
+  line-height:1 !important;
+  cursor:pointer !important;
+  opacity:.7 !important;
+  flex:0 0 auto !important;
+}
+html body #today-home .th-photo-dot.on{
+  color:#ffd45c !important;
+  opacity:1 !important;
+  transform:scale(1.25) !important;
+}
+html body #today-home .th-photo-go,
+html body #today-home .th-photo-dots .th-photo-go{
+  position:absolute !important;
+  right:4px !important;
+  top:50% !important;
+  transform:translateY(-50%) !important;
+  margin:0 !important;
+  width:32px !important;
+  height:32px !important;
+  flex:0 0 auto !important;
+}
+html body #today-home .th-photo-count{font-size:12px!important;margin-left:4px!important}
+html body #today-home .th-photo-more{font-size:18px!important;padding:0 2px!important}
+</style>
+
+
+
 
 <style id="dark-icon-bar-gold-final">
 html[data-theme="dark"] #layout-menu-dock,
@@ -19368,6 +19725,1180 @@ html body.v34-layout-bottom:not(#v9x) #layout-menu-dock.dock-bottom>#hdr-strip{f
       if(s && !s.hidden) closeSheet();
     }
   });
+})();
+</script>
+
+
+
+
+
+
+
+
+<div class="sheet-bg" id="sheet-bg-select" hidden>
+  <div class="sheet">
+    <button class="sheet-close" data-close="sheet-bg-select" type="button" aria-label="닫기">✕</button>
+    <h2>배경 관리</h2>
+    <button type="button" id="bg-ctrl-tog" aria-expanded="true" aria-controls="bg-ctrl-wrap">▲ 도구 닫기</button>
+    <div id="bg-ctrl-wrap">
+    <div class="bg-chips" id="bg-chips">
+      <button class="bg-chip on" data-cat="all" type="button">전체</button>
+      <button class="bg-chip" data-cat="A" type="button">말씀카드</button>
+      <button class="bg-chip" data-cat="B" type="button">풍경</button>
+      <button class="bg-chip" data-cat="D" type="button">절기</button>
+      <button class="bg-chip" data-cat="E" type="button">묵상</button>
+      <button class="bg-chip" data-cat="F" type="button">자연</button>
+    </div>
+    <div class="bg-square-row">
+      <button type="button" class="bg-sq" id="bg-add-btn">＋ 내 사진</button>
+      <button type="button" class="bg-sq" id="bg-clear-sel-btn">선택 해제</button>
+      <button type="button" class="bg-sq" id="bg-pool-btn">풀에 추가</button>
+      <button type="button" class="bg-sq" id="bg-share-btn">공유</button>
+    </div>
+    <div class="bg-long-row">
+      <button type="button" class="bg-long primary" id="bg-apply-btn">오늘의 말씀에 적용</button>
+    </div>
+    <input type="file" id="bg-file-input" accept="image/*" multiple="multiple" hidden>
+    <div class="bg-status" id="bg-status"></div>
+    </div>
+    <div class="bg-grid" id="bg-grid"></div>
+</div>
+</div>
+<script id="bg-select-js">
+(function(){
+  var DEFAULTS = [
+    {id:"d1",cat:"A",title:"고요한 호수",url:"https://picsum.photos/id/1015/800/600",thumb:"https://picsum.photos/id/1015/200/200"},
+    {id:"d2",cat:"A",title:"부드러운 숲",url:"https://picsum.photos/id/1018/800/600",thumb:"https://picsum.photos/id/1018/200/200"},
+    {id:"d3",cat:"A",title:"안개 산",url:"https://picsum.photos/id/1016/800/600",thumb:"https://picsum.photos/id/1016/200/200"},
+    {id:"d4",cat:"A",title:"평화 들판",url:"https://picsum.photos/id/1019/800/600",thumb:"https://picsum.photos/id/1019/200/200"},
+    {id:"d5",cat:"A",title:"새벽 빛",url:"https://picsum.photos/id/1036/800/600",thumb:"https://picsum.photos/id/1036/200/200"},
+    {id:"d6",cat:"B",title:"산맥",url:"https://picsum.photos/id/29/800/600",thumb:"https://picsum.photos/id/29/200/200"},
+    {id:"d11",cat:"D",title:"봄 꽃",url:"https://picsum.photos/id/152/800/600",thumb:"https://picsum.photos/id/152/200/200"},
+    {id:"d12",cat:"D",title:"가을 단풍",url:"https://picsum.photos/id/167/800/600",thumb:"https://picsum.photos/id/167/200/200"},
+    {id:"d18",cat:"F",title:"숲길",url:"https://picsum.photos/id/191/800/600",thumb:"https://picsum.photos/id/191/200/200"},
+    {id:"d20",cat:"F",title:"산 정상",url:"https://picsum.photos/id/235/800/600",thumb:"https://picsum.photos/id/235/200/200"},
+    {id:"d22",cat:"A",title:"연한 하늘",url:"https://picsum.photos/id/256/800/600",thumb:"https://picsum.photos/id/256/200/200"},
+    {id:"d24",cat:"F",title:"평화 자연",url:"https://picsum.photos/id/301/800/600",thumb:"https://picsum.photos/id/301/200/200"}
+  ];
+
+  var selectedId = null;
+  var currentCat = "all";
+  var DB_NAME = "bpBgDB";
+  var DB_VER = 1;
+  var STORE = "photos";
+  var _db = null;
+  var _metaCache = null; // [{id,cat,title,hasThumb,hasFull}]
+  var _blobUrlCache = {}; // key -> objectURL
+  var _migrateDone = false;
+
+  function $(id){ return document.getElementById(id); }
+  function setStatus(m){ var el=$("bg-status"); if(el) el.textContent = m||""; }
+
+  /* v86-fix: 모바일에서 도구 영역 접힘(기본) — 사진 그리드가 화면 대부분을 차지 */
+  var ctrlWrap=$("bg-ctrl-wrap"), ctrlTog=$("bg-ctrl-tog"), bgSheet=$("sheet-bg-select");
+  function bgIsMobile(){ return window.innerWidth<=768; }
+  function syncCtrlUI(){
+    if(!ctrlWrap||!ctrlTog) return;
+    if(!bgIsMobile()){ ctrlWrap.classList.remove("collapsed"); ctrlTog.textContent="▲ 도구 닫기"; ctrlTog.setAttribute("aria-expanded","true"); return; }
+    var col=ctrlWrap.classList.contains("collapsed");
+    ctrlTog.textContent=col?"▼ 도구 열기":"▲ 도구 닫기";
+    ctrlTog.setAttribute("aria-expanded",col?"false":"true");
+  }
+  if(ctrlTog){ ctrlTog.addEventListener("click",function(){ if(!ctrlWrap) return; ctrlWrap.classList.toggle("collapsed"); syncCtrlUI(); }); }
+  if(bgIsMobile()&&ctrlWrap){ ctrlWrap.classList.add("collapsed"); }
+  if(bgSheet&&ctrlWrap){ try{ new MutationObserver(function(){ if(!bgSheet.hidden&&bgIsMobile()&&!ctrlWrap.dataset.everOpened){ ctrlWrap.dataset.everOpened="1"; ctrlWrap.classList.add("collapsed"); } syncCtrlUI(); }).observe(bgSheet,{attributes:true,attributeFilter:["hidden"]}); }catch(e){} }
+  window.addEventListener("resize",syncCtrlUI); syncCtrlUI();
+
+  function openDB(){
+    return new Promise(function(resolve, reject){
+      if(_db){ resolve(_db); return; }
+      if(!window.indexedDB){ reject(new Error("no-idb")); return; }
+      var req = indexedDB.open(DB_NAME, DB_VER);
+      req.onupgradeneeded = function(){
+        var db = req.result;
+        if(!db.objectStoreNames.contains(STORE)){
+          db.createObjectStore(STORE, { keyPath: "id" });
+        }
+      };
+      req.onsuccess = function(){ _db = req.result; resolve(_db); };
+      req.onerror = function(){ reject(req.error || new Error("idb-open")); };
+    });
+  }
+
+  function idbPut(rec){
+    return openDB().then(function(db){
+      return new Promise(function(resolve, reject){
+        var tx = db.transaction(STORE, "readwrite");
+        tx.objectStore(STORE).put(rec);
+        tx.oncomplete = function(){ resolve(true); };
+        tx.onerror = function(){ reject(tx.error); };
+      });
+    });
+  }
+
+  function idbGet(id){
+    return openDB().then(function(db){
+      return new Promise(function(resolve, reject){
+        var tx = db.transaction(STORE, "readonly");
+        var req = tx.objectStore(STORE).get(id);
+        req.onsuccess = function(){ resolve(req.result || null); };
+        req.onerror = function(){ reject(req.error); };
+      });
+    });
+  }
+
+  function idbGetAll(){
+    return openDB().then(function(db){
+      return new Promise(function(resolve, reject){
+        var tx = db.transaction(STORE, "readonly");
+        var req = tx.objectStore(STORE).getAll();
+        req.onsuccess = function(){ resolve(req.result || []); };
+        req.onerror = function(){ reject(req.error); };
+      });
+    });
+  }
+
+  function idbDelete(id){
+    return openDB().then(function(db){
+      return new Promise(function(resolve, reject){
+        var tx = db.transaction(STORE, "readwrite");
+        tx.objectStore(STORE).delete(id);
+        tx.oncomplete = function(){ resolve(true); };
+        tx.onerror = function(){ reject(tx.error); };
+      });
+    });
+  }
+
+  function revokeUrl(key){
+    if(_blobUrlCache[key]){
+      try{ URL.revokeObjectURL(_blobUrlCache[key]); }catch(e){}
+      delete _blobUrlCache[key];
+    }
+  }
+
+  function blobToUrl(key, blob){
+    if(!blob) return "";
+    if(_blobUrlCache[key]) return _blobUrlCache[key];
+    var u = URL.createObjectURL(blob);
+    _blobUrlCache[key] = u;
+    return u;
+  }
+
+  function dataUrlToBlob(dataUrl){
+    return new Promise(function(resolve, reject){
+      try{
+        if(!dataUrl || String(dataUrl).indexOf("data:") !== 0){ resolve(null); return; }
+        var arr = String(dataUrl).split(",");
+        var mime = (arr[0].match(/:(.*?);/) || [])[1] || "image/jpeg";
+        var bstr = atob(arr[1]);
+        var n = bstr.length;
+        var u8 = new Uint8Array(n);
+        for(var i=0;i<n;i++) u8[i] = bstr.charCodeAt(i);
+        resolve(new Blob([u8], { type: mime }));
+      }catch(e){ reject(e); }
+    });
+  }
+
+  function loadHidden(){ try{ return JSON.parse(localStorage.getItem("bp_hidden_bgs")||"[]"); }catch(e){ return []; } }
+  function saveHidden(arr){ try{ localStorage.setItem("bp_hidden_bgs", JSON.stringify(arr||[])); }catch(e){} }
+  function loadTitles(){ try{ return JSON.parse(localStorage.getItem("bp_bg_titles")||"{}"); }catch(e){ return {}; } }
+  function saveTitles(o){ try{ localStorage.setItem("bp_bg_titles", JSON.stringify(o||{})); }catch(e){} }
+
+  // legacy localStorage user photos (do not delete until migrated)
+  function loadUserLegacy(){ try{ return JSON.parse(localStorage.getItem("bp_user_bgs")||"[]"); }catch(e){ return []; } }
+
+  function refreshMetaCache(){
+    return idbGetAll().then(function(rows){
+      _metaCache = (rows || []).map(function(r){
+        return { id: r.id, cat: r.cat || "A", title: r.title || "내 사진", hasThumb: !!r.thumb, hasFull: !!r.full };
+      });
+      return _metaCache;
+    }).catch(function(){ _metaCache = _metaCache || []; return _metaCache; });
+  }
+
+  function migrateLegacyOnce(){
+    if(_migrateDone) return Promise.resolve();
+    var legacy = loadUserLegacy();
+    if(!legacy.length){ _migrateDone = true; return Promise.resolve(); }
+    // migrate one-by-one; keep localStorage until all succeed
+    var i = 0;
+    function next(){
+      if(i >= legacy.length){
+        _migrateDone = true;
+        // only clear legacy after successful migration of all
+        try{
+          var left = loadUserLegacy();
+          // remove only items that exist in IDB
+          return idbGetAll().then(function(rows){
+            var ids = {};
+            (rows||[]).forEach(function(r){ ids[r.id]=1; });
+            var remain = left.filter(function(x){ return x && !ids[x.id]; });
+            if(remain.length === 0){
+              // all migrated - keep a backup key then clear main
+              try{ localStorage.setItem("bp_user_bgs_backup", JSON.stringify(left)); }catch(e){}
+              try{ localStorage.removeItem("bp_user_bgs"); }catch(e){}
+            } else {
+              try{ localStorage.setItem("bp_user_bgs", JSON.stringify(remain)); }catch(e){}
+            }
+          });
+        }catch(e){}
+        return Promise.resolve();
+      }
+      var item = legacy[i++];
+      if(!item || !item.id) return next();
+      return idbGet(item.id).then(function(existing){
+        if(existing && existing.full) return next();
+        var dataUrl = item.url || item.thumb || "";
+        if(!dataUrl) return next();
+        return dataUrlToBlob(dataUrl).then(function(blob){
+          if(!blob) return next();
+          // create small thumb blob via bitmap if possible
+          return makeThumbBlob(blob).then(function(thumbBlob){
+            return idbPut({
+              id: item.id,
+              cat: item.cat || "A",
+              title: item.title || "내 사진",
+              full: blob,
+              thumb: thumbBlob || blob,
+              updatedAt: Date.now()
+            }).then(function(){ return next(); });
+          });
+        }).catch(function(){ return next(); });
+      }).catch(function(){ return next(); });
+    }
+    return openDB().then(function(){ return next(); }).catch(function(){ _migrateDone = true; });
+  }
+
+  function makeThumbBlob(blob){
+    return new Promise(function(resolve){
+      var MAX = 140;
+      function draw(src, w, h){
+        try{
+          var sc = Math.min(1, MAX / Math.max(w, h, 1));
+          var cw = Math.max(1, Math.round(w * sc)), ch = Math.max(1, Math.round(h * sc));
+          var cv = document.createElement("canvas");
+          cv.width = cw; cv.height = ch;
+          cv.getContext("2d").drawImage(src, 0, 0, cw, ch);
+          if(src.close) try{ src.close(); }catch(e){}
+          if(cv.toBlob){
+            cv.toBlob(function(b){ resolve(b || blob); }, "image/jpeg", 0.5);
+          } else {
+            dataUrlToBlob(cv.toDataURL("image/jpeg", 0.5)).then(resolve).catch(function(){ resolve(blob); });
+          }
+        }catch(e){ resolve(blob); }
+      }
+      if(typeof createImageBitmap === "function"){
+        createImageBitmap(blob).then(function(bmp){ draw(bmp, bmp.width, bmp.height); }).catch(function(){ resolve(blob); });
+      } else {
+        var u = URL.createObjectURL(blob);
+        var im = new Image();
+        im.onload = function(){ draw(im, im.naturalWidth||im.width, im.naturalHeight||im.height); try{ URL.revokeObjectURL(u);}catch(e){} };
+        im.onerror = function(){ try{ URL.revokeObjectURL(u);}catch(e){} resolve(blob); };
+        im.src = u;
+      }
+    });
+  }
+
+  function compressUpload(file){
+    return new Promise(function(resolve, reject){
+      var MAX_FULL = 960, MAX_TH = 140, done = false;
+      var to = setTimeout(function(){ if(!done){ done=true; reject(new Error("time")); } }, 8000);
+      function ok(o){ if(done) return; done=true; clearTimeout(to); resolve(o); }
+      function fail(e){ if(done) return; done=true; clearTimeout(to); reject(e||new Error("fail")); }
+      function fromBmp(bmp){
+        try{
+          var w = bmp.width, h = bmp.height;
+          function toBlob(max, q){
+            return new Promise(function(res){
+              var sc = Math.min(1, max / Math.max(w, h, 1));
+              var cw = Math.max(1, Math.round(w * sc)), ch = Math.max(1, Math.round(h * sc));
+              var cv = document.createElement("canvas");
+              cv.width = cw; cv.height = ch;
+              cv.getContext("2d").drawImage(bmp, 0, 0, cw, ch);
+              if(cv.toBlob) cv.toBlob(function(b){ res(b); }, "image/jpeg", q);
+              else dataUrlToBlob(cv.toDataURL("image/jpeg", q)).then(res);
+            });
+          }
+          Promise.all([toBlob(MAX_FULL, 0.72), toBlob(MAX_TH, 0.5)]).then(function(arr){
+            if(bmp.close) try{ bmp.close(); }catch(e){}
+            ok({ full: arr[0], thumb: arr[1] });
+          }).catch(fail);
+        }catch(err){ fail(err); }
+      }
+      if(typeof createImageBitmap === "function"){
+        var p;
+        try{ p = createImageBitmap(file, { resizeWidth: MAX_FULL, resizeHeight: MAX_FULL, resizeQuality: "medium" }); }
+        catch(e){ p = createImageBitmap(file); }
+        p.then(fromBmp).catch(function(){ createImageBitmap(file).then(fromBmp).catch(fail); });
+      } else {
+        var u = URL.createObjectURL(file);
+        var im = new Image();
+        im.onload = function(){
+          // fake bitmap-like
+          fromBmp({ width: im.naturalWidth||im.width, height: im.naturalHeight||im.height, close:null, // draw via temp
+            // monkey: drawImage needs real image - reimplement quickly
+          });
+        };
+        // simpler path
+        im.onload = function(){
+          try{
+            var w = im.naturalWidth||im.width, h = im.naturalHeight||im.height;
+            function mk(max,q,cb){
+              var sc=Math.min(1,max/Math.max(w,h,1));
+              var cv=document.createElement("canvas");
+              cv.width=Math.max(1,Math.round(w*sc)); cv.height=Math.max(1,Math.round(h*sc));
+              cv.getContext("2d").drawImage(im,0,0,cv.width,cv.height);
+              if(cv.toBlob) cv.toBlob(cb,"image/jpeg",q);
+              else dataUrlToBlob(cv.toDataURL("image/jpeg",q)).then(cb);
+            }
+            mk(MAX_FULL,0.72,function(full){
+              mk(MAX_TH,0.5,function(thumb){
+                try{ URL.revokeObjectURL(u);}catch(e){}
+                ok({full:full, thumb:thumb});
+              });
+            });
+          }catch(err){ try{ URL.revokeObjectURL(u);}catch(e){} fail(err); }
+        };
+        im.onerror = function(){ try{ URL.revokeObjectURL(u);}catch(e){} fail(new Error("img")); };
+        im.src = u;
+      }
+    });
+  }
+
+  function allItemsSyncFallback(){
+    // defaults + meta + any legacy still in LS
+    var hidden = loadHidden();
+    var titles = loadTitles();
+    var users = (_metaCache || []).map(function(m){
+      var t = titles[m.id];
+      return { id: m.id, cat: m.cat, title: t || m.title, user: true, idb: true };
+    });
+    // include unmigrated legacy as user items (url present for fallback)
+    loadUserLegacy().forEach(function(it){
+      if(!it || !it.id) return;
+      if(users.some(function(u){ return u.id === it.id; })) return;
+      var t = titles[it.id];
+      users.push({ id: it.id, cat: it.cat||"A", title: t||it.title||"내 사진", user: true, legacyUrl: it.url, legacyThumb: it.thumb });
+    });
+    var defs = DEFAULTS.filter(function(d){ return hidden.indexOf(d.id) < 0; }).map(function(d){
+      var t = titles[d.id];
+      return t ? Object.assign({}, d, { title: t }) : d;
+    });
+    return users.concat(defs);
+  }
+
+  function ensureReady(){
+    return migrateLegacyOnce().then(refreshMetaCache).catch(function(){ return refreshMetaCache(); });
+  }
+
+  function applyToToday(url){
+    if(!url){ setStatus("이미지 없음"); return; }
+    setStatus("적용 중...");
+    // if already a usable url (http or data or blob)
+    function doApply(finalUrl){
+      var ph = $("th-photo");
+      if(ph){ ph.src = finalUrl; ph.style.display = ""; }
+      try{ if(typeof window.addToTodayBgPool === "function") window.addToTodayBgPool(finalUrl, { note: "from-bg-manager" }); }catch(e){}
+      try{
+        var key = (typeof kstNow === "function" && kstNow().key) || "";
+        if(key){
+          var LS = "ddabongDesignBg_v1";
+          var m = {}; try{ m = JSON.parse(localStorage.getItem(LS)||"{}")||{}; }catch(e){}
+          // design bg expects data url often - if blob, convert
+          if(String(finalUrl).indexOf("blob:") === 0){
+            fetch(finalUrl).then(function(r){ return r.blob(); }).then(function(b){
+              var fr = new FileReader();
+              fr.onload = function(){
+                m[key] = fr.result;
+                try{ localStorage.setItem(LS, JSON.stringify(m)); }catch(e){}
+              };
+              fr.readAsDataURL(b);
+            }).catch(function(){});
+          } else {
+            m[key] = finalUrl;
+            try{ localStorage.setItem(LS, JSON.stringify(m)); }catch(e){}
+          }
+        }
+      }catch(e){}
+      try{ if(window.__thSharePhotoSrc !== undefined) window.__thSharePhotoSrc = finalUrl; }catch(e){}
+      setStatus("✅ 오늘의 말씀 카드 배경에 적용되었습니다.");
+    }
+    doApply(url);
+  }
+
+  function resolveFullUrl(item){
+    return new Promise(function(resolve){
+      if(!item){ resolve(""); return; }
+      if(item.url && String(item.id).indexOf("u") !== 0){ resolve(item.url); return; }
+      if(item.legacyUrl){ resolve(item.legacyUrl); return; }
+      idbGet(item.id).then(function(rec){
+        if(rec && rec.full){ resolve(blobToUrl("full:"+item.id, rec.full)); return; }
+        if(rec && rec.thumb){ resolve(blobToUrl("thumb:"+item.id, rec.thumb)); return; }
+        resolve("");
+      }).catch(function(){ resolve(""); });
+    });
+  }
+
+  function addToPoolOnly(url){
+    setStatus("풀에 추가 중...");
+    function afterDataUrl(dataUrl){
+      if(typeof window.addToTodayBgPool === "function"){
+        return window.addToTodayBgPool(dataUrl, { note: "bg-manager" }).then(function(ok){
+          setStatus(ok !== false ? "✅ 오늘의 말씀 배경 풀에 추가됨" : "이미 비슷한 이미지가 있거나 추가 실패");
+        });
+      }
+      setStatus("풀 기능을 찾을 수 없습니다.");
+    }
+    if(String(url).indexOf("blob:") === 0){
+      fetch(url).then(function(r){ return r.blob(); }).then(function(b){
+        var fr = new FileReader();
+        fr.onload = function(){ afterDataUrl(fr.result); };
+        fr.readAsDataURL(b);
+      }).catch(function(){ setStatus("추가 실패"); });
+    } else if(String(url).indexOf("data:") === 0){
+      afterDataUrl(url);
+    } else {
+      // remote - fetch as data url via canvas if needed
+      var im = new Image();
+      im.crossOrigin = "anonymous";
+      im.onload = function(){
+        try{
+          var cv = document.createElement("canvas");
+          cv.width = im.naturalWidth; cv.height = im.naturalHeight;
+          cv.getContext("2d").drawImage(im,0,0);
+          afterDataUrl(cv.toDataURL("image/jpeg", 0.85));
+        }catch(e){ setStatus("추가 실패"); }
+      };
+      im.onerror = function(){ setStatus("추가 실패"); };
+      im.src = url;
+    }
+  }
+
+  function shareTodayStyle(url){
+    var text = "", ref = "";
+    try{
+      var vt = $("th-verse-text"), vr = $("th-verse-ref");
+      if(vt) text = (vt.textContent||"").trim();
+      if(vr) ref = (vr.textContent||"").trim();
+    }catch(e){}
+    if(!text){
+      try{
+        if(typeof selectedVerses !== "undefined" && selectedVerses && selectedVerses.length){
+          text = selectedVerses.map(function(s){ return (s.text||"").trim(); }).join(" ");
+          if(typeof selectedRefLine === "function") ref = selectedRefLine();
+        }
+      }catch(e){}
+    }
+    if(!text){ setStatus("⚠️ 오늘의 말씀 또는 선택한 구절이 없습니다."); alert("오늘의 말씀 화면의 성구가 없거나, 본문에서 절을 선택해주세요."); return; }
+    setStatus("이미지 생성 중...");
+    var im = new Image();
+    im.crossOrigin = "anonymous";
+    im.onload = function(){
+      var W=1080,H=1620;
+      var cv=document.createElement("canvas"); cv.width=W; cv.height=H;
+      var ctx=cv.getContext("2d");
+      var scale=Math.max(W/im.width,H/im.height);
+      var iw=im.width*scale, ih=im.height*scale;
+      ctx.drawImage(im,(W-iw)/2,(H-ih)/2,iw,ih);
+      var g=ctx.createLinearGradient(0,H*0.35,0,H);
+      g.addColorStop(0,"rgba(0,0,0,0)"); g.addColorStop(0.45,"rgba(0,0,0,0.35)"); g.addColorStop(1,"rgba(0,0,0,0.72)");
+      ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+      ctx.fillStyle="#fff"; ctx.textAlign="center"; ctx.textBaseline="middle";
+      var fontSize=40; ctx.font="600 "+fontSize+"px sans-serif";
+      function wrap(t,maxW){
+        var lines=[], words=String(t).split(/\s+/), line="";
+        words.forEach(function(w){
+          var test=line?line+" "+w:w;
+          if(ctx.measureText(test).width>maxW&&line){lines.push(line);line=w;}else line=test;
+        });
+        if(line) lines.push(line); return lines;
+      }
+      var lines=wrap(text, W-100);
+      while(lines.length*fontSize*1.35 > H*0.4 && fontSize>26){
+        fontSize-=2; ctx.font="600 "+fontSize+"px sans-serif"; lines=wrap(text,W-100);
+      }
+      var lineH=fontSize*1.35, startY=H*0.58;
+      lines.forEach(function(ln,i){ ctx.shadowColor="rgba(0,0,0,.7)"; ctx.shadowBlur=10; ctx.fillText(ln, W/2, startY+i*lineH); });
+      ctx.shadowBlur=0;
+      if(ref){ ctx.fillStyle="#ffd45c"; ctx.font="700 26px sans-serif"; ctx.fillText(ref, W/2, startY+lines.length*lineH+40); }
+      var out=cv.toDataURL("image/jpeg",0.9);
+      var a=document.createElement("a"); a.href=out; a.download=(ref||"todays-word").replace(/[^\w가-힣\-]+/g,"_")+".jpg";
+      document.body.appendChild(a); a.click(); a.remove();
+      setStatus("✅ 오늘의 말씀 형태로 저장되었습니다.");
+    };
+    im.onerror = function(){ setStatus("이미지 로드 실패"); };
+    im.src = url;
+  }
+
+  function render(cat){
+    if(cat) currentCat = cat;
+    var grid = $("bg-grid"); if(!grid) return;
+    var list = allItemsSyncFallback();
+    if(currentCat !== "all") list = list.filter(function(i){ return i.cat === currentCat; });
+    if(!list.length){
+      grid.innerHTML = '<div style="grid-column:1/-1;padding:20px;text-align:center;color:var(--muted)">이미지 없음</div>';
+      return;
+    }
+    var parts = new Array(list.length);
+    for(var i=0;i<list.length;i++){
+      var item = list[i];
+      var isUser = !!item.user || String(item.id).indexOf("u")===0;
+      var sel = item.id === selectedId ? " selected" : "";
+      // 목록에는 data-thumb-src만 넣고 실제 src는 observer가 채움 (원본 금지)
+      var thumbHint = "";
+      if(!isUser){
+        if(item.thumb) thumbHint = item.thumb;
+        else {
+          var mm = String(item.url||"").match(/picsum\.photos\/id\/(\d+)\//);
+          thumbHint = mm ? ("https://picsum.photos/id/"+mm[1]+"/120/120") : (item.url||"");
+        }
+      } else if(item.legacyThumb && String(item.legacyThumb).length < 80000){
+        thumbHint = item.legacyThumb;
+      } else if(item.legacyUrl){
+        // 원본 Base64는 목록 attribute에 넣지 않음 (병목 차단)
+        thumbHint = "";
+      }
+      parts[i] =
+        '<div class="bg-card' + sel + (isUser ? " user" : "") + '" data-id="' + item.id + '" data-user="' + (isUser?"1":"0") + '" data-thumb="' + String(thumbHint).replace(/&/g,"&amp;").replace(/"/g,"&quot;") + '">' +
+          '<div class="bg-check">✓</div>' +
+          '<div class="bg-label">' + (sel ? "✓ " : "") + String(item.title||"").replace(/</g,"") + (isUser ? " ·내" : "") + '</div>' +
+          '<button type="button" class="bg-del" data-del="' + item.id + '" title="삭제">×</button>' +
+          '<button type="button" class="bg-edit" data-edit="' + item.id + '" title="이름 수정">✎</button>' +
+        '</div>';
+    }
+    grid.innerHTML = parts.join("");
+    setStatus(list.length + "장");
+    wireLazyThumbs(grid);
+  }
+
+  // ---- 썸네일 로딩 큐 (원본 Base64 절대 목록에 사용 안 함) ----
+  var _thumbQueue = [];
+  var _thumbActive = 0;
+  var _thumbMax = 3; // 동시 디코딩 제한
+  var _thumbInflight = {};
+
+  function queueThumbJob(job){
+    _thumbQueue.push(job);
+    pumpThumbQueue();
+  }
+  function pumpThumbQueue(){
+    while(_thumbActive < _thumbMax && _thumbQueue.length){
+      var job = _thumbQueue.shift();
+      _thumbActive++;
+      Promise.resolve()
+        .then(job)
+        .catch(function(){})
+        .then(function(){ _thumbActive--; pumpThumbQueue(); });
+    }
+  }
+
+  function putThumbImg(card, src){
+    if(!card || !src) return;
+    // 기존 img 제거 후 1장만
+    var old = card.querySelector("img");
+    if(old) old.remove();
+    var img = document.createElement("img");
+    img.alt = "";
+    img.decoding = "async";
+    img.loading = "lazy";
+    img.src = src;
+    card.insertBefore(img, card.firstChild);
+    card.setAttribute("data-loaded", "1");
+  }
+
+  function loadThumbForCard(card){
+    if(!card) return Promise.resolve();
+    if(card.getAttribute("data-loaded") === "1" && card.querySelector("img")) return Promise.resolve();
+    var id = card.getAttribute("data-id");
+    var isUser = card.getAttribute("data-user") === "1";
+    var key = "thumb:"+id;
+    if(_thumbInflight[key]) return _thumbInflight[key];
+
+    var p = Promise.resolve().then(function(){
+      if(!isUser){
+        // 기본 사진: 작은 URL만 (원본 큰 URL 쓰지 않음)
+        var hint = card.getAttribute("data-thumb") || "";
+        var mm = hint.match(/picsum\.photos\/id\/(\d+)/);
+        if(mm) hint = "https://picsum.photos/id/"+mm[1]+"/120/120";
+        if(hint) putThumbImg(card, hint);
+        return;
+      }
+      // 사용자 사진: IndexedDB에서 thumb Blob만 get
+      return idbGet(id).then(function(rec){
+        if(rec && rec.thumb){
+          putThumbImg(card, blobToUrl(key, rec.thumb));
+          return;
+        }
+        if(rec && rec.full){
+          // 썸네일 없으면 full에서 한 번만 생성 (목록에는 full을 img src로 넣지 않음)
+          return makeThumbBlob(rec.full).then(function(th){
+            rec.thumb = th;
+            idbPut(rec).catch(function(){});
+            putThumbImg(card, blobToUrl(key, th));
+          });
+        }
+        // 레거시 LS에서 id로만 찾아 썸네일 생성 (목록에 원본 문자열을 넣지 않음)
+        var legacy = card.getAttribute("data-thumb") || "";
+        if(!(legacy && legacy.indexOf("data:") === 0)){
+          try{
+            var arr = JSON.parse(localStorage.getItem("bp_user_bgs")||"[]");
+            for(var i=0;i<arr.length;i++){
+              if(arr[i] && arr[i].id === id && arr[i].url){ legacy = arr[i].thumb || arr[i].url; break; }
+            }
+          }catch(e){}
+        }
+        if(legacy && legacy.indexOf("data:") === 0){
+          return dataUrlToBlob(legacy).then(function(blob){
+            if(!blob) return;
+            return makeThumbBlob(blob).then(function(th){
+              return idbPut({
+                id: id,
+                cat: "A",
+                title: ((card.querySelector(".bg-label")||{}).textContent || "내 사진").replace(/^✓\s*/,"").replace(/\s·내$/,""),
+                full: blob,
+                thumb: th,
+                updatedAt: Date.now()
+              }).then(function(){
+                putThumbImg(card, blobToUrl(key, th));
+              });
+            });
+          });
+        }
+        // 실패 시 회색 유지
+      });
+    }).catch(function(){}).then(function(){
+      delete _thumbInflight[key];
+    });
+
+    _thumbInflight[key] = p;
+    return p;
+  }
+
+  function wireLazyThumbs(grid){
+    if(!grid) return;
+    var cards = Array.prototype.slice.call(grid.querySelectorAll(".bg-card"));
+    // 1) 목록은 이미 카드만 그려진 상태 (사진 없음)
+    // 2) 먼저 화면 상단 몇 장 우선 큐
+    var priority = cards.slice(0, 9);
+    var rest = cards.slice(9);
+    priority.forEach(function(c){
+      queueThumbJob(function(){ return loadThumbForCard(c); });
+    });
+    // 3) 나머지는 보이면 로드
+    if(typeof IntersectionObserver === "function"){
+      var io = new IntersectionObserver(function(entries){
+        entries.forEach(function(en){
+          if(!en.isIntersecting) return;
+          var card = en.target;
+          io.unobserve(card);
+          queueThumbJob(function(){ return loadThumbForCard(card); });
+        });
+      }, { root: null, rootMargin: "120px", threshold: 0.01 });
+      rest.forEach(function(c){ io.observe(c); });
+      // 시트 안에서 이미 보이는 rest도 즉시 검사
+      setTimeout(function(){
+        rest.forEach(function(c){
+          var r = c.getBoundingClientRect();
+          if(r.top < window.innerHeight + 120 && r.bottom > -40){
+            try{ io.unobserve(c); }catch(e){}
+            queueThumbJob(function(){ return loadThumbForCard(c); });
+          }
+        });
+      }, 50);
+    } else {
+      rest.forEach(function(c){
+        queueThumbJob(function(){ return loadThumbForCard(c); });
+      });
+    }
+  }
+
+  function getSelectedItem(){
+    var list = allItemsSyncFallback();
+    for(var i=0;i<list.length;i++) if(list[i].id === selectedId) return list[i];
+    return null;
+  }
+
+  document.addEventListener("click", function(e){
+    if(e.target.closest("#btn-bg-select")){
+      e.preventDefault();
+      var s = $("sheet-bg-select");
+      if(s){
+        s.hidden = false;
+        document.body.style.overflow = "hidden";
+        document.querySelectorAll("#bg-chips .bg-chip").forEach(function(c){ c.classList.toggle("on", c.getAttribute("data-cat")==="all"); });
+        currentCat = "all";
+        // 1) 카드 골격 즉시
+        render("all");
+        // 2) 메타/마이그레이션 후 다시 골격 + 썸네일 큐
+        ensureReady().then(function(){
+          render(currentCat);
+        }).catch(function(){
+          render(currentCat);
+        });
+      }
+      return;
+    }
+    if(e.target.closest('[data-close="sheet-bg-select"]') || (e.target.id==="sheet-bg-select" && e.target.classList.contains("sheet-bg"))){
+      var s2 = $("sheet-bg-select"); if(s2){ s2.hidden = true; document.body.style.overflow = ""; }
+      return;
+    }
+    var chip = e.target.closest(".bg-chip");
+    if(chip && chip.closest("#bg-chips")){
+      document.querySelectorAll("#bg-chips .bg-chip").forEach(function(c){ c.classList.remove("on"); });
+      chip.classList.add("on");
+      render(chip.getAttribute("data-cat"));
+      return;
+    }
+    var card = e.target.closest(".bg-card");
+    if(card && card.closest("#bg-grid") && !e.target.closest(".bg-del") && !e.target.closest(".bg-edit")){
+      selectedId = card.getAttribute("data-id");
+      document.querySelectorAll("#bg-grid .bg-card").forEach(function(c){ c.classList.remove("selected"); });
+      card.classList.add("selected");
+      setStatus("✓ 선택됨 — 위 적용/풀/공유 버튼을 누르세요");
+      var st = $("bg-status"); if(st) st.classList.add("has-sel");
+      return;
+    }
+    var editBtn = e.target.closest(".bg-edit");
+    if(editBtn){
+      e.preventDefault(); e.stopPropagation();
+      var eid = editBtn.getAttribute("data-edit");
+      var cur = "";
+      allItemsSyncFallback().forEach(function(it){ if(it.id===eid) cur = it.title||""; });
+      var nt = prompt("사진 이름 수정", cur);
+      if(nt == null) return;
+      nt = String(nt).trim().slice(0, 24);
+      if(!nt) return;
+      var titles = loadTitles(); titles[eid] = nt; saveTitles(titles);
+      // update idb title if user
+      idbGet(eid).then(function(rec){
+        if(rec){ rec.title = nt; return idbPut(rec); }
+      }).catch(function(){}).then(function(){ return refreshMetaCache(); }).then(function(){ render(currentCat); setStatus("이름 수정됨: "+nt); });
+      return;
+    }
+    var del = e.target.closest(".bg-del");
+    if(del){
+      e.preventDefault(); e.stopPropagation();
+      var id = del.getAttribute("data-del");
+      if(!confirm("이 사진을 목록에서 제거할까요?")) return;
+      var isUser = String(id).indexOf("u")===0;
+      if(isUser){
+        idbDelete(id).catch(function(){});
+        revokeUrl("thumb:"+id); revokeUrl("full:"+id);
+        // also remove from legacy if present
+        try{
+          var leg = loadUserLegacy().filter(function(i){ return i.id !== id; });
+          localStorage.setItem("bp_user_bgs", JSON.stringify(leg));
+        }catch(e){}
+        refreshMetaCache().then(function(){
+          if(selectedId===id) selectedId=null;
+          render(currentCat); setStatus("삭제됨");
+        });
+      } else {
+        var hid = loadHidden();
+        if(hid.indexOf(id)<0){ hid.push(id); saveHidden(hid); }
+        if(selectedId===id) selectedId=null;
+        render(currentCat); setStatus("기본 사진 숨김 처리됨");
+      }
+      return;
+    }
+    if(e.target.closest("#bg-add-btn")){ var inp=$("bg-file-input"); if(inp) inp.click(); return; }
+    if(e.target.closest("#bg-clear-sel-btn")){
+      selectedId=null;
+      document.querySelectorAll("#bg-grid .bg-card").forEach(function(c){ c.classList.remove("selected"); });
+      setStatus("선택 해제됨"); var st=$("bg-status"); if(st) st.classList.remove("has-sel");
+      return;
+    }
+    if(e.target.closest("#bg-apply-btn")){
+      var item = getSelectedItem();
+      if(!item){ setStatus("⚠️ 이미지를 선택하세요"); return; }
+      resolveFullUrl(item).then(function(url){
+        if(!url){ setStatus("이미지를 불러오지 못했습니다"); return; }
+        applyToToday(url);
+      });
+      return;
+    }
+    if(e.target.closest("#bg-pool-btn")){
+      var item2 = getSelectedItem();
+      if(!item2){ setStatus("⚠️ 이미지를 선택하세요"); return; }
+      resolveFullUrl(item2).then(function(url){
+        if(!url){ setStatus("이미지를 불러오지 못했습니다"); return; }
+        addToPoolOnly(url);
+      });
+      return;
+    }
+    if(e.target.closest("#bg-share-btn")){
+      var item3 = getSelectedItem();
+      if(!item3){ setStatus("⚠️ 이미지를 선택하세요"); return; }
+      resolveFullUrl(item3).then(function(url){
+        if(!url){ setStatus("이미지를 불러오지 못했습니다"); return; }
+        shareTodayStyle(url);
+      });
+      return;
+    }
+  });
+
+  document.addEventListener("change", function(e){
+    if(!e.target || e.target.id !== "bg-file-input") return;
+    var input = e.target;
+    var files = input.files;
+    if(!files || !files.length) return;
+    var queue = [];
+    for(var i=0;i<files.length;i++){
+      var f = files[i];
+      if(f && (!f.type || f.type.indexOf("image/")===0)) queue.push(f);
+    }
+    if(!queue.length){ setStatus("이미지 파일 없음"); return; }
+    var cat = currentCat === "all" ? "A" : currentCat;
+    var total = queue.length, ok=0, fail=0, pos=0;
+    setStatus("0/"+total+" 저장 중...");
+    function run(){
+      if(pos >= total){
+        refreshMetaCache().then(function(){ render(currentCat); setStatus(ok+"장 추가"+(fail?(" / 실패 "+fail):"")); });
+        try{ input.value=""; }catch(e){}
+        return;
+      }
+      var file = queue[pos++];
+      var name = String(file.name||"사진").replace(/\.[^.]+$/,"").slice(0,16);
+      setStatus(pos+"/"+total+" "+name);
+      compressUpload(file).then(function(res){
+        if(!res || !res.full){ fail++; setTimeout(run,0); return; }
+        var id = "u"+Date.now().toString(36)+pos;
+        return idbPut({
+          id: id,
+          cat: cat,
+          title: name,
+          full: res.full,
+          thumb: res.thumb || res.full,
+          updatedAt: Date.now()
+        }).then(function(){
+          ok++;
+          // 즉시 메타 반영
+          if(!_metaCache) _metaCache = [];
+          _metaCache.push({ id:id, cat:cat, title:name, hasThumb:true, hasFull:true });
+          render(currentCat);
+          setTimeout(run,0);
+        });
+      }).catch(function(){ fail++; setTimeout(run,0); });
+    }
+    ensureReady().then(function(){ setTimeout(run,0); }).catch(function(){ setTimeout(run,0); });
+  });
+
+  // preload meta on start (non-blocking)
+  try{ ensureReady(); }catch(e){}
+})();
+</script>
+
+
+
+<style id="v62-compare-btns">
+.pane-cmp-btn{
+  appearance:none;border:1px solid var(--line);background:var(--card);color:var(--ink);
+  border-radius:8px;min-width:32px;height:28px;padding:0 6px;font-size:14px;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;margin-left:4px;
+}
+.pane-cmp-btn:active{background:var(--accent);color:#fff}
+#panes.split-cols .pane-cmp-btn,
+#panes.split-rows .pane-cmp-btn{display:inline-flex !important}
+#panes:not(.split-cols):not(.split-rows) .pane-cmp-btn{display:none !important}
+</style>
+<script id="v62-compare-btns-js">
+(function(){
+  function getSelText(){
+    try{
+      if(typeof selectedVerses!=="undefined" && selectedVerses && selectedVerses.length){
+        var ref=""; try{ if(typeof selectedRefLine==="function") ref=selectedRefLine(); }catch(e){}
+        var body=selectedVerses.map(function(s){return (s.text||"").trim();}).filter(Boolean).join("\n");
+        return (ref?ref+"\n":"")+body;
+      }
+    }catch(e){}
+    var els=document.querySelectorAll(".verse.selected");
+    if(!els.length) return "";
+    return Array.from(els).map(function(el){return (el.textContent||"").replace(/\s+/g," ").trim();}).join("\n");
+  }
+  function copySel(){
+    var t=getSelText();
+    if(!t){ try{toast("구절을 먼저 선택하세요");}catch(e){alert("구절을 먼저 선택하세요");} return; }
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(t).then(function(){try{toast("복사됨");}catch(e){}}).catch(function(){});
+    }else{
+      var ta=document.createElement("textarea"); ta.value=t; document.body.appendChild(ta); ta.select();
+      try{document.execCommand("copy");}catch(e){} ta.remove();
+      try{toast("복사됨");}catch(e){}
+    }
+  }
+  function moveSel(){
+    // 반대 패널의 같은 구절로 스크롤/포커스
+    try{
+      if(typeof selectedVerses==="undefined"||!selectedVerses||!selectedVerses.length){
+        try{toast("구절을 먼저 선택하세요");}catch(e){alert("구절을 먼저 선택하세요");} return;
+      }
+      var s=selectedVerses[0];
+      var panes=document.getElementById("panes");
+      var reading=document.querySelector(".pane.reading");
+      var other=null;
+      if(reading&&reading.id==="pane-a") other=document.getElementById("pane-b");
+      else other=document.getElementById("pane-a");
+      if(other){
+        other.classList.add("reading");
+        if(reading) reading.classList.remove("reading");
+      }
+      if(typeof goToPassage==="function" && s.book!=null){
+        goToPassage(s.book, s.ch, s.vi);
+      }
+      try{toast("반대 화면으로 이동");}catch(e){}
+    }catch(err){ console.error(err); }
+  }
+  function bind(id,fn){ var el=document.getElementById(id); if(el) el.addEventListener("click",fn); }
+  bind("pane-copy-a",copySel); bind("pane-copy-b",copySel);
+  bind("pane-move-a",moveSel); bind("pane-move-b",moveSel);
+  // split 토글 시 버튼 표시는 CSS로 처리
+})();
+</script>
+
+
+<script id="v62-logo-th-actions">
+(function(){
+  function ensureHome(){
+    try{ if(typeof openHome==="function") openHome();
+    else if(window.__thOpenHome) window.__thOpenHome();
+    }catch(e){}
+  }
+  document.addEventListener("click", function(e){
+    var item=e.target.closest(".logo-feature-item[data-target]");
+    if(!item) return;
+    var t=item.getAttribute("data-target");
+    if(!t || t.indexOf("th-action-")!==0) return;
+    e.preventDefault(); e.stopPropagation();
+    try{ if(typeof closeLogoFeaturePanel==="function") closeLogoFeaturePanel();
+      else { var p=document.getElementById("logo-feature-panel"); if(p) p.hidden=true; }
+    }catch(err){}
+    if(t==="th-action-open-reader"){
+      try{ if(typeof openReader==="function") openReader(); else if(window.__thOpenReader) window.__thOpenReader(); }catch(err){}
+      var btn=document.getElementById("th-open-reader"); if(btn) btn.click();
+      return;
+    }
+    if(t==="th-action-prev"){
+      ensureHome();
+      try{ if(window.__thPhotoHistory) window.__thPhotoHistory(-1); }catch(err){}
+      return;
+    }
+    if(t==="th-action-next"){
+      ensureHome();
+      try{ if(window.__thPhotoHistory) window.__thPhotoHistory(1); }catch(err){}
+      return;
+    }
+  }, true);
+})();
+</script>
+
+
+<script id="v62b-today-menu-fix">
+(function(){
+  document.addEventListener("click", function(e){
+    var item = e.target.closest('.logo-feature-item[data-target="btn-today"]');
+    if(!item) return;
+    // after default click may fail if hidden - ensure openHome
+    setTimeout(function(){
+      try{
+        if(typeof openHome==="function") openHome();
+        else if(window.__thOpenHome) window.__thOpenHome();
+        else {
+          var el=document.getElementById("today-home");
+          if(el){ el.hidden=false; document.body.classList.add("th-open"); }
+        }
+      }catch(err){}
+    }, 30);
+  }, true);
+})();
+</script>
+
+
+<script id="v56-home-panels-js">
+/* v56: 오늘의 말씀 화면에서 밝기·크기·음량·간격 패널을 숨기고, 성경 본문으로 돌아오면 원래 상태로 복원 */
+(function(){
+  var IDS=['bright-dock','size-dock','vol-dock','gap-dock'], TABS=['bright-tab','size-tab','vol-tab','gap-tab'];
+  function g(i){return document.getElementById(i);}
+  function isHome(){return document.body&&document.body.classList.contains('th-open');}
+  function hide(){
+    IDS.concat(TABS).forEach(function(id){
+      var e=g(id); if(!e) return;
+      if(e.style.getPropertyValue('display')!=='none') e.style.setProperty('display','none','important');
+      e.style.setProperty('visibility','hidden','important');
+      e.style.setProperty('pointer-events','none','important');
+    });
+  }
+  function show(){
+    if(!document.body.classList.contains('panel-tools-on')) return;
+    IDS.forEach(function(id){ var e=g(id); if(!e) return;
+      e.style.setProperty('display','flex','important');e.style.setProperty('visibility','visible','important');
+      e.style.setProperty('opacity','1','important');e.style.setProperty('pointer-events','none','important');
+      e.style.setProperty('z-index','13010','important'); });
+    TABS.forEach(function(id){ var t=g(id); if(!t) return;
+      t.style.setProperty('display','block','important');t.style.setProperty('visibility','visible','important');
+      t.style.setProperty('opacity','0.9','important');t.style.setProperty('pointer-events','auto','important'); });
+  }
+  var last=null;
+  function sync(){ var o=isHome(); if(o===last) return; last=o; if(o) hide(); else show(); }
+  function guard(){ if(isHome()){ var bad=IDS.concat(TABS).some(function(id){var e=g(id);return e&&e.style.getPropertyValue('display')!=='none';}); if(bad) hide(); } }
+  function init(){
+    if(!document.body) return;
+    new MutationObserver(sync).observe(document.body,{attributes:true,attributeFilter:['class']});
+    var mo=new MutationObserver(guard);
+    IDS.concat(TABS).forEach(function(id){var e=g(id); if(e) mo.observe(e,{attributes:true,attributeFilter:['style']});});
+    sync(); guard();
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init); else init();
+  window.addEventListener('load',function(){ last=null; sync(); guard(); });
+})();
+</script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","spa":2}' crossorigin="anonymous"></script>
+
+<style id="dd-help-center-style">
+#sheet-help .help-center{
+  width:min(100%,900px)!important;max-width:900px!important;max-height:min(92dvh,900px)!important;
+  padding:0!important;overflow:hidden!important;border:1px solid rgba(201,162,39,.35);
+  border-radius:22px!important;background:var(--card,#1c1a16);
+  box-shadow:0 24px 80px rgba(0,0,0,.48)
+}
+#sheet-help .help-head{
+  display:flex;align-items:flex-start;justify-content:space-between;gap:14px;
+  padding:22px 24px 18px;background:linear-gradient(135deg,#151a21,#242019);
+  color:#f7f0df;border-bottom:1px solid rgba(201,162,39,.25)
+}
+#sheet-help .help-kicker{font-size:10px;letter-spacing:.18em;color:#d8b957;font-weight:800;margin-bottom:7px}
+#sheet-help .help-head h2{font-size:22px!important;margin:0 0 5px;color:#fff8e9;letter-spacing:-.04em}
+#sheet-help .help-head p{font-size:12px;color:#c4bdaf;margin:0;line-height:1.5}
+#sheet-help .help-head .sheet-close{float:none;flex:0 0 38px;width:38px;height:38px;color:#f5e6c8;border:1px solid rgba(221,190,111,.45);background:rgba(255,255,255,.06)}
+#sheet-help .help-layout{display:grid;grid-template-columns:210px minmax(0,1fr);height:min(66dvh,650px);min-height:340px}
+#sheet-help .help-nav{padding:14px 10px;background:color-mix(in srgb,var(--bg,#141210) 82%,#b38a2c 18%);border-right:1px solid var(--line);overflow:auto}
+#sheet-help .help-nav button{
+  width:100%;display:flex;align-items:center;gap:10px;text-align:left;padding:11px 10px;margin:0 0 5px;
+  border:1px solid transparent;border-radius:11px;background:transparent;color:var(--ink);font-size:13px;font-weight:650
+}
+#sheet-help .help-nav button .help-nav-ico{width:27px;height:27px;display:grid;place-items:center;flex:0 0 27px;border-radius:8px;background:rgba(201,162,39,.12);color:#d7b24d;font-size:15px}
+#sheet-help .help-nav button.active{background:linear-gradient(110deg,rgba(201,162,39,.2),rgba(201,162,39,.06));border-color:rgba(201,162,39,.45);color:var(--ink)}
+#sheet-help .help-content{overflow:auto;padding:20px 22px 24px;min-width:0}
+#sheet-help .help-content-top{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+#sheet-help .help-step-label{font-size:10px;font-weight:800;letter-spacing:.12em;color:#b18a31;text-transform:uppercase}
+#sheet-help .help-current{font-size:11px;color:var(--muted);padding-left:10px;border-left:1px solid var(--line)}
+#sheet-help .help-title{font-size:21px;font-weight:800;letter-spacing:-.04em;margin:0 0 7px;color:var(--ink)}
+#sheet-help .help-intro{font-size:13px;line-height:1.75;color:var(--muted);margin:0 0 17px}
+#sheet-help .help-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+#sheet-help .help-card{border:1px solid var(--line);border-radius:14px;padding:13px;background:var(--card);min-width:0}
+#sheet-help .help-card-top{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+#sheet-help .help-card-ico{width:31px;height:31px;display:grid;place-items:center;border-radius:10px;background:rgba(201,162,39,.13);color:#b18a31;font-size:17px;flex:0 0 31px}
+#sheet-help .help-card h4{font-size:13px;margin:0;font-weight:800;color:var(--ink)}
+#sheet-help .help-card p{font-size:12px;line-height:1.65;color:var(--muted);margin:0 0 10px}
+#sheet-help .help-go{
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:34px;padding:7px 11px;
+  border-radius:9px;border:1px solid rgba(201,162,39,.55);background:linear-gradient(135deg,#2b2923,#191815);
+  color:#f5e6c8;font-size:11px;font-weight:750;cursor:pointer
+}
+#sheet-help .help-go:active{transform:scale(.98);background:#57451e}
+#sheet-help .help-go:disabled{opacity:.4;cursor:not-allowed}
+#sheet-help .help-note{margin-top:14px;padding:11px 13px;border-radius:11px;background:color-mix(in srgb,var(--bg) 85%,#c9a227 15%);border:1px solid var(--line);font-size:11.5px;line-height:1.65;color:var(--muted)}
+#sheet-help .help-note b{color:var(--ink)}
+#sheet-help .help-foot{padding:11px 18px;border-top:1px solid var(--line);font-size:11px;color:var(--muted);background:var(--bg)}
+#sheet-help .help-foot span{display:inline-block;color:#b18a31;font-weight:900;letter-spacing:.12em;margin-right:7px}
+@media(max-width:620px){
+  #sheet-help .help-center{width:100%!important;max-width:none!important;max-height:94dvh!important;border-radius:18px 18px 0 0!important}
+  #sheet-help .help-head{padding:17px 16px 14px}
+  #sheet-help .help-head h2{font-size:19px!important}
+  #sheet-help .help-layout{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr);height:min(73dvh,700px);min-height:0}
+  #sheet-help .help-nav{display:flex;gap:6px;overflow-x:auto;overflow-y:hidden;padding:9px 10px;border-right:0;border-bottom:1px solid var(--line)}
+  #sheet-help .help-nav button{width:auto;flex:0 0 auto;white-space:nowrap;padding:8px 9px;margin:0;font-size:11px}
+  #sheet-help .help-nav button .help-nav-ico{width:23px;height:23px;flex-basis:23px;font-size:13px}
+  #sheet-help .help-content{padding:16px 13px 20px}
+  #sheet-help .help-title{font-size:19px}
+  #sheet-help .help-cards{grid-template-columns:1fr;gap:8px}
+  #sheet-help .help-card{padding:11px}
+}
+</style>
+<script id="dd-help-center-script">
+(function(){
+  'use strict';
+  var nav=document.getElementById('help-nav'), detail=document.getElementById('help-detail');
+  if(!nav||!detail||window.__ddHelpCenterInit)return;
+  window.__ddHelpCenterInit=true;
+  var sections=[
+    {id:'read',icon:'📖',name:'성경 읽기',title:'성경 본문 읽기',intro:'번역본과 성경 책·장·절을 선택해 본문을 읽습니다. 화면 위쪽의 선택창과 본문을 중심으로 사용하세요.',cards:[
+      ['📚','번역본 선택','상단의 번역판 선택창에서 이미 불러온 번역본을 선택합니다. 다른 번역본이 없다면 번역본 관리에서 파일을 추가하세요.','btn-load','번역본 관리 열기'],
+      ['📖','책과 장 이동','상단의 책·장 선택창에서 원하는 위치로 이동합니다. 본문은 절 단위로 표시되며, 절을 누르면 선택 상태가 됩니다.',null,'상단 선택창 사용'],
+      ['📍','성경 구절 찾기','책·장·절 또는 구절 주소를 입력해 원하는 위치로 이동합니다.','h-goto','구절 찾기 열기'],
+      ['☀','오늘의 말씀','오늘의 말씀 첫 화면과 성경 본문 화면을 전환합니다.','btn-today','오늘의 말씀 열기']
+    ],note:'처음 사용할 때는 번역본을 먼저 불러오세요. 본문이 표시되지 않으면 번역본 데이터가 준비되었는지 확인하세요.'},
+    {id:'search',icon:'🔎',name:'검색과 구절 이동',title:'말씀 검색과 위치 찾기',intro:'단어 검색과 구절 주소 이동은 서로 다른 기능입니다. 검색은 단어가 포함된 구절을 찾고, 구절 찾기는 특정 위치로 바로 이동합니다.',cards:[
+      ['🔍','성경 검색','검색어를 입력하고 검색 범위를 선택해 본문에서 해당 단어를 찾습니다. AND/OR 검색 방식도 선택할 수 있습니다.','h-search','검색 열기'],
+      ['📍','구절 찾기','책·장·절 주소를 입력하거나 선택해 해당 구절로 이동합니다.','h-goto','구절 찾기 열기'],
+      ['▦','화면 분할 비교','화면을 나누어 서로 다른 번역본을 나란히 읽을 수 있습니다.','h-split','화면 분할 전환'],
+      ['🔀','선택 구절 번역 비교','먼저 본문에서 구절을 선택한 뒤 번역 비교를 실행합니다.','h-compare','선택 구절 비교']
+    ],note:'검색과 번역 비교는 번역본 데이터가 불러와져 있어야 제대로 사용할 수 있습니다.'},
+    {id:'voice',icon:'🔊',name:'음성 낭독',title:'성경 음성으로 듣기',intro:'하단 재생 영역에서 낭독을 시작·일시정지하고, 속도와 음성 관련 설정을 조절할 수 있습니다.',cards:[
+      ['▶','낭독 시작','현재 본문 위치부터 음성 낭독을 시작합니다.','btn-play','낭독 시작'],
+      ['Ⅱ','일시정지','진행 중인 낭독을 멈춥니다. 다시 재생하면 이어서 들을 수 있습니다.','btn-pause','일시정지'],
+      ['◴','낭독 속도','재생 속도 설정을 열어 읽는 속도를 조절합니다.','btn-rate','속도 설정'],
+      ['🔊','소리 컨트롤','상단의 소리 아이콘으로 재생 컨트롤 표시 상태를 바꿉니다.','btn-sound','소리 컨트롤']
+    ],note:'기기에서 음성이 나오지 않으면 운영체제의 음성 서비스와 한국어 음성 데이터 설치 상태를 확인하세요.'},
+    {id:'records',icon:'⭐',name:'나의 기록',title:'즐겨찾기 · 메모 · 일독 기록',intro:'마음에 남는 구절을 저장하고, 선택한 말씀에 메모를 남기며, 성경 읽기 진행 상황을 관리합니다.',cards:[
+      ['★','즐겨찾기','본문의 즐겨찾기 표시 또는 즐겨찾기 메뉴에서 저장한 구절을 확인합니다.','h-fav','즐겨찾기 열기'],
+      ['📌','구절 메모','먼저 본문에서 구절을 선택한 뒤 메모 기능을 실행해 기록을 작성합니다.','h-memo','선택 구절 메모'],
+      ['☑','성경 일독 체크리스트','책과 장별 읽기 진행 상황을 확인하고 완료 항목을 표시합니다.','h-plan','일독 체크리스트'],
+      ['📝','오늘의 묵상 기록','오늘의 말씀 화면에서 묵상 내용을 작성하고 저장합니다.','th-note','묵상 기록 열기']
+    ],note:'메모 작성은 본문 구절을 먼저 선택해야 합니다. 오늘의 묵상 기록은 오늘의 말씀 화면에서 이용하세요.'},
+    {id:'today',icon:'☀️',name:'오늘의 말씀',title:'오늘의 말씀 첫 화면',intro:'앱 시작 화면에서 오늘의 성구와 묵상을 확인하고, 배경·디자인을 바꾸거나 말씀을 공유할 수 있습니다.',cards:[
+      ['☀','오늘의 말씀 화면','성경 본문 화면과 오늘의 말씀 첫 화면을 전환합니다.','btn-today','오늘의 말씀 열기'],
+      ['🖼️','배경 선택','오늘의 말씀 화면에서 배경 이미지를 선택하거나 관리합니다.','btn-bg-select','배경 선택 열기'],
+      ['🎨','말씀 디자인 편집','오늘의 말씀 화면의 디자인 편집 기능을 실행해 말씀 카드 구성을 조정합니다.','th-design','디자인 편집 열기'],
+      ['💬','묵상 기록','오늘의 말씀 화면에서 오늘의 묵상 내용을 작성합니다.','th-note','묵상 기록 열기']
+    ],note:'오늘의 말씀 화면의 디자인·묵상 도구는 해당 화면에서 사용할 때 가장 자연스럽게 표시됩니다.'},
+    {id:'image',icon:'🎨',name:'말씀 이미지 제작',title:'말씀을 이미지 카드로 만들기',intro:'선택한 구절을 이미지 카드로 꾸미고 배경과 글자 배치를 조정합니다. 오늘의 말씀 디자인 편집기도 별도로 제공됩니다.',cards:[
+      ['🎨','선택 구절 이미지 카드','먼저 본문에서 구절을 선택한 뒤 이미지 카드 편집기를 엽니다.','h-image','선택 구절 이미지 만들기'],
+      ['🖼️','배경 관리','오늘의 말씀 화면의 배경 선택 기능을 엽니다.','btn-bg-select','배경 관리 열기'],
+      ['📌','카드 미리보기 고정','이미지 카드 편집 화면에서 미리보기 고정 상태를 전환합니다.','btn-card-pin','카드 고정 전환'],
+      ['✨','오늘의 말씀 디자인','오늘의 말씀 화면으로 이동한 뒤 디자인 편집을 실행합니다.','th-design','디자인 편집 열기']
+    ],note:'선택 구절 이미지 카드는 본문에서 구절을 먼저 선택해야 합니다. 오늘의 말씀 디자인은 오늘의 말씀 화면을 기준으로 작동합니다.'},
+    {id:'settings',icon:'⚙️',name:'화면과 환경 설정',title:'읽기 화면과 앱 환경 조절',intro:'글꼴, 테마, 글자 크기, 구절 간격, 화면 밝기와 메뉴 배치를 조절할 수 있습니다.',cards:[
+      ['🔤','글꼴 설정','성경 본문 글꼴과 표시 환경을 조정합니다.','h-font','글꼴 설정 열기'],
+      ['☀','화면 테마','밝은 화면과 어두운 화면을 전환합니다.','btn-theme','테마 전환'],
+      ['A↕','글자 크기','화면 가장자리의 글자 크기 패널을 엽니다.','size-tab','글자 크기 조절'],
+      ['☼','화면 밝기','화면 밝기 조절 패널을 엽니다.','bright-tab','밝기 조절'],
+      ['↕','구절 간격','본문 구절 사이의 간격을 조절합니다.','gap-tab','구절 간격 조절'],
+      ['☰','전체 메뉴','앱 메뉴를 열어 추가 기능과 설정 항목을 확인합니다.','btn-menu','전체 메뉴 열기']
+    ],note:'화면 가장자리 조절 패널은 현재 화면 배치에 따라 위치가 달라질 수 있습니다.'},
+    {id:'data',icon:'📂',name:'번역본과 데이터 관리',title:'번역본 불러오기와 데이터',intro:'성경 번역본 파일을 추가해 사용할 수 있습니다. 이미 불러온 번역본은 브라우저 저장소에 보관됩니다.',cards:[
+      ['📚','번역본 불러오기','번역본 파일을 선택해 앱에 추가합니다. 이미 추가한 번역본은 중복으로 불러오지 않도록 확인하세요.','btn-load','번역본 불러오기'],
+      ['▾','번역본 선택','불러온 번역본은 상단 번역판 선택창에서 바꿔 읽을 수 있습니다.',null,'상단 번역판 선택'],
+      ['💾','데이터 보관','브라우저 저장소를 사용하므로 같은 브라우저·기기에서 데이터를 유지할 수 있습니다. 브라우저 데이터 삭제 전에는 백업 기능의 유무를 확인하세요.','btn-menu-bottom','하단 설정 열기']
+    ],note:'번역본 파일의 추가·삭제와 개인 기록의 백업은 서로 다른 작업입니다. 중요한 기록은 브라우저 데이터 삭제 전에 별도로 보관하세요.'}
+  ];
+  function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function render(id){
+    var item=sections.find(function(x){return x.id===id;})||sections[0];
+    nav.querySelectorAll('button').forEach(function(b){b.classList.toggle('active',b.dataset.section===item.id);});
+    var current=document.getElementById('help-current');if(current)current.textContent=item.name;
+    detail.innerHTML='<h3 class="help-title">'+esc(item.title)+'</h3><p class="help-intro">'+esc(item.intro)+'</p><div class="help-cards">'+item.cards.map(function(c){
+      var action=c[3]?'<button type="button" class="help-go" data-help-go="'+esc(c[3])+'">'+esc(c[4]||'기능 실행')+' <span aria-hidden="true">↗</span></button>':'<span class="help-go" style="opacity:.65;cursor:default">화면 상단에서 선택</span>';
+      return '<article class="help-card"><div class="help-card-top"><span class="help-card-ico">'+esc(c[0])+'</span><h4>'+esc(c[1])+'</h4></div><p>'+esc(c[2])+'</p>'+action+'</article>';
+    }).join('')+'</div><div class="help-note"><b>안내</b> · '+esc(item.note)+'</div>';
+  }
+  sections.forEach(function(item){
+    var b=document.createElement('button');b.type='button';b.dataset.section=item.id;
+    b.innerHTML='<span class="help-nav-ico">'+esc(item.icon)+'</span><span>'+esc(item.name)+'</span>';
+    b.addEventListener('click',function(){render(item.id);});
+    nav.appendChild(b);
+  });
+  nav.addEventListener('click',function(e){var b=e.target.closest('button[data-section]');if(b)render(b.dataset.section);});
+  detail.addEventListener('click',function(e){
+    var b=e.target.closest('[data-help-go]');if(!b)return;
+    var id=b.getAttribute('data-help-go');
+    var target=document.getElementById(id);
+    if(!target){if(typeof window.toast==='function')window.toast('해당 기능 버튼을 현재 화면에서 찾을 수 없습니다.');return;}
+    if(typeof window.closeSheet==='function')window.closeSheet('sheet-help');
+    else {var help=document.getElementById('sheet-help');if(help)help.hidden=true;}
+    // 선택 구절 기반 기능은 기존 앱의 버튼 핸들러를 그대로 실행한다.
+    try{target.click();}catch(err){if(typeof window.toast==='function')window.toast('기능을 실행하지 못했습니다.');}
+  });
+  render('read');
 })();
 </script>
 
