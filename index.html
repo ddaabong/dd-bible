@@ -2913,6 +2913,9 @@ const VERSION_LIST=[
   {code:'NKJV',name:'NKJV'},{code:'NLT',name:'NLT'},{code:'NRSV',name:'NRSV'},{code:'TNIV',name:'TNIV'},
   {code:'custom',name:'기타'}
 ];
+/* 사용자 등록 번역본(파일명 '이름(코드).txt')을 저장해 두었다가 복원 */
+(function(){ try{ var cv=JSON.parse(localStorage.getItem('ddabongCustomVersions')||'[]'); cv.forEach(function(x){ if(x&&x.code&&!VERSION_LIST.some(function(v){return v.code===x.code;})){ VERSION_LIST.splice(VERSION_LIST.length-1,0,{code:x.code,name:x.name||x.code}); } }); }catch(e){} })();
+if(!VERSION_LIST.some(function(v){return v.code==='korn4KRV';})) VERSION_LIST.splice(VERSION_LIST.length-1,0,{code:'korn4KRV',name:'개역개정4판'});
 const VERSION_LABELS={}; VERSION_LIST.forEach(v=>VERSION_LABELS[v.code]=v.name);
 
 /* ============ [FIX] 번역본 목록 정렬: 한글(가나다) → 영어(A-Z) ============ */
@@ -2953,7 +2956,8 @@ const BOOK_MAP={
   '52살전':{name:'데살로니가전서'},'53살후':{name:'데살로니가후서'},'54딤전':{name:'디모데전서'},
   '55딤후':{name:'디모데후서'},'56딛':{name:'디도서'},'57몬':{name:'빌레몬서'},'58히':{name:'히브리서'},
   '59약':{name:'야고보서'},'60벧전':{name:'베드로전서'},'61벧후':{name:'베드로후서'},'62요일':{name:'요한일서'},
-  '63요이':{name:'요한이서'},'64요삼':{name:'요한삼서'},'65유':{name:'유다서'},'66계':{name:'요한계시록'}
+  '63요이':{name:'요한이서'},'64요삼':{name:'요한삼서'},'65유':{name:'유다서'},'66계':{name:'요한계시록'},
+  '67토':{name:'토비트'},'68딧':{name:'유딧'},'69혜':{name:'지혜서'},'70집':{name:'집회서'},'71바':{name:'바룩'},'72카상':{name:'마카베오상'},'73카하':{name:'마카베오하'}
 };
 const BOOK_ORDER=Object.keys(BOOK_MAP).map(c=>BOOK_MAP[c].name);
 const BOOK_ALIAS={
@@ -3022,7 +3026,9 @@ const BOOK_ALIAS={
   '요이':'요한이서','요한이서':'요한이서',
   '요삼':'요한삼서','요한삼서':'요한삼서',
   '유':'유다서','유다':'유다서','유다서':'유다서',
-  '계':'요한계시록','계시':'요한계시록','요한계시록':'요한계시록'
+  '계':'요한계시록','계시':'요한계시록','요한계시록':'요한계시록',
+  '토':'토비트','토비트':'토비트','딧':'유딧','유딧':'유딧','혜':'지혜서','지혜서':'지혜서','집':'집회서','집회서':'집회서',
+  '바룩':'바룩','카상':'마카베오상','마카베오상':'마카베오상','카하':'마카베오하','마카베오하':'마카베오하'
 };
 /* 화면 표시용 짧은 이름 (창세기→창, 요한복음→요) */
 const BOOK_SHORT={
@@ -3039,7 +3045,8 @@ const BOOK_SHORT={
   '빌립보서':'빌','골로새서':'골','데살로니가전서':'살전','데살로니가후서':'살후',
   '디모데전서':'딤전','디모데후서':'딤후','디도서':'딛','빌레몬서':'몬','히브리서':'히',
   '야고보서':'약','베드로전서':'벧전','베드로후서':'벧후','요한일서':'요일','요한이서':'요이',
-  '요한삼서':'요삼','유다서':'유','요한계시록':'계'
+  '요한삼서':'요삼','유다서':'유','요한계시록':'계',
+  '토비트':'토','유딧':'딧','지혜서':'혜','집회서':'집','바룩':'바','마카베오상':'카상','마카베오하':'카하'
 };
 function shortName(full){ return BOOK_SHORT[full] || full; }
 function bookLabel(full){ const s=shortName(full); return s===full?full:('('+s+') '+full); }
@@ -3166,6 +3173,54 @@ function resolveBookName(raw){
   if(EN_BOOK_TO_KO[key.replace(/\s/g,'')]) return EN_BOOK_TO_KO[key.replace(/\s/g,'')];
   return null;
 }
+/* 절 소제목: <제목> 으로 시작하는 절은 제목을 따로 저장해 두었다가 절 위에 표시 */
+var __titleCache={};
+function saveVerseTitles(code, t){
+  try{
+    var has=t&&Object.keys(t).length>0;
+    if(has) localStorage.setItem('ddabongTitles_'+code, JSON.stringify(t)); else localStorage.removeItem('ddabongTitles_'+code);
+    __titleCache[code]=has?t:null;
+  }catch(e){}
+}
+/* a태초에 … (a 또는 …) / … /a 또는 … 형태의 영문자 각주 */
+function parseLetterNotes(body){
+  var keys={}, found=0, rest=String(body);
+  rest=rest.replace(/\s*\(\s*([a-z])\s+([^()]*)\)/g,function(all,k,t){ keys[k]=t.trim(); found++; return ''; });
+  var sp=rest.split(/\s*\/\s*(?=[a-z]\s)/);
+  if(sp.length>1){ rest=sp.shift(); sp.forEach(function(pc){ pc=pc.trim(); if(pc){ keys[pc[0]]=pc.slice(1).trim(); found++; } }); }
+  if(!found) return null;
+  var clean='', marks=[], used={}, i, ch, prev;
+  for(i=0;i<rest.length;i++){
+    ch=rest[i]; prev=i?rest[i-1]:'';
+    if(/[a-z]/.test(ch) && keys[ch]!==undefined && /[\uac00-\ud7a3]/.test(rest[i+1]||'') && !/[A-Za-z0-9]/.test(prev)){ marks.push([clean.length,ch]); used[ch]=1; }
+    else clean+=ch;
+  }
+  if(!marks.length) return null;
+  Object.keys(keys).forEach(function(k){ if(!used[k]) marks.push([clean.length,k]); });
+  return {m:marks,n:keys,t:clean.replace(/\s+$/,'').trim()};
+}
+var __noteCache={};
+function saveVerseNotes(code, t){
+  try{
+    var has=t&&Object.keys(t).length>0;
+    if(has) localStorage.setItem('ddabongNotes_'+code, JSON.stringify(t)); else localStorage.removeItem('ddabongNotes_'+code);
+    __noteCache[code]=has?t:null;
+  }catch(e){}
+}
+function verseNoteOf(code, book, chap, i){
+  try{
+    if(!(code in __noteCache)){ var r=localStorage.getItem('ddabongNotes_'+code); __noteCache[code]=r?JSON.parse(r):null; }
+    var t=__noteCache[code]; if(!t) return null;
+    var b=t[book]; return (b&&b[String(+chap)+':'+(i+1)])||null;
+  }catch(e){ return null; }
+}
+function verseTitleOf(code, book, chap, i){
+  try{
+    if(!(code in __titleCache)){ var r=localStorage.getItem('ddabongTitles_'+code); __titleCache[code]=r?JSON.parse(r):null; }
+    var t=__titleCache[code]; if(!t) return '';
+    var b=t[book]; return (b&&b[String(+chap)+':'+(i+1)])||'';
+  }catch(e){ return ''; }
+}
 function addVerse(data, book, chap, verse, body){
   if(!book||!body) return;
   if(!data[book]) data[book]={};
@@ -3229,6 +3284,8 @@ function parseBibleText(text){
   }
 
   const data={}; let cur=null, curChap=null, matched=0;
+  window.__parsedTitles={};
+  window.__parsedNotes={};
   const lines=trimmed.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
   for(const raw of lines){
     let line=raw.trim().replace(/^\uFEFF/,'');
@@ -3244,6 +3301,8 @@ function parseBibleText(text){
     m=line.match(/^(\d{2}(?=[0-9]*[가-힣A-Za-z一-鿿])[0-9가-힣A-Za-z一-鿿]+)\s+(\d+)\s*[:：]\s*(\d+)\s*[|\t ]\s*(.+)$/);
     if(!m) m=line.match(/^(\d{2}(?=[0-9]*[가-힣A-Za-z一-鿿])[0-9가-힣A-Za-z一-鿿]+)\s+(\d+)\s*[:：]\s*(\d+)\s+(.+)$/);
     if(m){ bookRaw=m[1]; chap=m[2]; verse=m[3]; body=m[4]; }
+    // 책 약어 없이 숫자 2자리만 있는 형식 (예: 01 1:1 본문)
+    if(!m){ m=line.match(/^(\d{2})\s+(\d+)\s*[:：]\s*(\d+)\s+(.+)$/); if(m){ bookRaw=m[1]; chap=m[2]; verse=m[3]; body=m[4]; } }
     // 영어 책이름
     if(!m){
       m=line.match(/^((?:[1-3I]\s*)?[A-Za-z][A-Za-z .']{0,30}?)\s+(\d+)\s*[:：]\s*(\d+)\s*[|\t ]\s*(.+)$/);
@@ -3264,7 +3323,16 @@ function parseBibleText(text){
       if(m && !/^\d+[:：]/.test(m[2])){ verse=m[1]; body=m[2]; chap=curChap; }
     }
     if(!body) continue;
-    if(body.startsWith('<')&&body.includes('>')) body=body.slice(body.indexOf('>')+1).trim();
+    let __ttl='';
+    if(body.startsWith('<')&&body.includes('>')){ __ttl=body.slice(1,body.indexOf('>')).trim(); body=body.slice(body.indexOf('>')+1).trim(); }
+    let __nt=null;
+    if(/\s\/\s*[\u3260-\u327b]/.test(body)){
+      const __parts=body.split(/\s*\/\s*(?=[\u3260-\u327b])/); const __main=__parts.shift();
+      let __clean='', __m=[]; for(const ch of __main){ if(/[\u3260-\u327b]/.test(ch)) __m.push([__clean.length,ch]); else __clean+=ch; }
+      const __n={}; __parts.forEach(function(pc){ pc=pc.trim(); if(pc) __n[pc[0]]=pc.slice(1).trim(); });
+      if(Object.keys(__n).length||__m.length){ __nt={m:__m,n:__n}; body=__clean; }
+    }
+    if(!__nt){ const __ln=parseLetterNotes(body); if(__ln){ __nt={m:__ln.m,n:__ln.n}; body=__ln.t; } }
     body=body.replace(/^["'\s]+|["'\s]+$/g,'').trim();
     if(!body) continue;
     let book=bookRaw?resolveBookName(String(bookRaw).replace(/\.$/,'')):cur;
@@ -3276,6 +3344,8 @@ function parseBibleText(text){
     if(!book && bookRaw){ const nn=String(bookRaw).match(/^(\d{2})/); if(nn){ const kk=koByOrder(+nn[1]-1); if(kk) book=kk; } }
     if(!book) continue;
     cur=book; curChap=String(chap); addVerse(data, book, chap, verse, body); matched++;
+    if(__nt){ var __nb=(window.__parsedNotes[book]=window.__parsedNotes[book]||{}); __nb[String(+chap)+':'+String(+verse)]=__nt; }
+    if(__ttl){ var __tb=(window.__parsedTitles[book]=window.__parsedTitles[book]||{}); __tb[String(+chap)+':'+String(+verse)]=__ttl; }
   }
   data.__meta={matched, books:Object.keys(data).filter(k=>k!=='__meta').length, format:'lines'};
   return data;
@@ -3327,6 +3397,20 @@ function normalizeVersionCode(code){
   return c;
 }
 function guessVersion(fname){
+  /* 파일명이 '번역본이름(코드).txt' 형태면 목록에 자동 등록 */
+  try{
+    var _m=String(fname||'').replace(/^.*[\\/]/,'').match(/^(.+?)\s*\(([A-Za-z][A-Za-z0-9_]{1,23})\)\s*\.(txt|text|bdf)$/i);
+    if(_m){
+      var _code=_m[2], _name=_m[1].trim();
+      var _ex=VERSION_LIST.find(function(v){return v.code.toLowerCase()===_code.toLowerCase();});
+      if(_ex) return _ex.code;
+      VERSION_LIST.splice(VERSION_LIST.length-1,0,{code:_code,name:_name});
+      VERSION_LABELS[_code]=_name;
+      if(typeof VERSION_SORTED!=='undefined'){ VERSION_SORTED.length=0; VERSION_LIST.slice().sort(function(x,y){return cmpVersionCode(x.code,y.code);}).forEach(function(v){VERSION_SORTED.push(v);}); }
+      try{ var _cv=JSON.parse(localStorage.getItem('ddabongCustomVersions')||'[]'); _cv.push({code:_code,name:_name}); localStorage.setItem('ddabongCustomVersions',JSON.stringify(_cv)); }catch(e){}
+      return _code;
+    }
+  }catch(e){}
   const lower=String(fname||'').toLowerCase();
   const lb=lower.replace(/^.*[\\/]/,'').replace(/\.(txt|text|bdf)$/,'');
   const cp=lb.replace(/[^a-z0-9가-힣]/g,'');
@@ -3501,7 +3585,7 @@ const EN_ABBR = {
   phm:'Philemon',heb:'Hebrews',jas:'James',jam:'James','1pe':'1 Peter','2pe':'2 Peter','1jn':'1 John','2jn':'2 John',
   '3jn':'3 John',jud:'Jude',rev:'Revelation'
 };
-function koByOrder(i){ return (BOOK_ORDER.length===66 && i>=0 && i<66) ? BOOK_ORDER[i] : null; }
+function koByOrder(i){ return (BOOK_ORDER.length>=66 && i>=0 && i<BOOK_ORDER.length) ? BOOK_ORDER[i] : null; }
 function canonBookName(n){
   if(n===null || n===undefined) return null;
   let raw = (n.normalize ? n.normalize('NFC') : String(n));
@@ -4690,12 +4774,15 @@ $('file-input').onchange=()=>{
 $('btn-assign-ok').onclick=async ()=>{
   const sels=[...$('assign-list').querySelectorAll('select')];
   closeSheet('sheet-assign'); toast('불러오는 중…');
+  let __lastCode=null, __cnt=0;
   for(let i=0;i<pendingFiles.length;i++){
     const file=pendingFiles[i]; let code=sels[i]?.value||'korEASY';
     try{
       const parsed=parseBibleText(await decodeFile(file));
       const meta=parsed.__meta||{};
       delete parsed.__meta;
+      const __tt=window.__parsedTitles||{};
+      const __nn=window.__parsedNotes||{};
       const books=Object.keys(parsed);
       if(!books.length){ toast(file.name+': 구절 없음 (형식 확인)'); console.warn('parse fail', file.name, meta); continue; }
       /* 파일명 추정과 사용자가 선택한 목록을 최우선으로 사용한다.
@@ -4704,6 +4791,9 @@ $('btn-assign-ok').onclick=async ()=>{
       code=normalizeVersionCode(code);
       if(!bibleByVersion[code]) bibleByVersion[code]={};
       books.forEach(b=>{ if(!bibleByVersion[code][b]) bibleByVersion[code][b]={}; Object.assign(bibleByVersion[code][b], parsed[b]); });
+      __lastCode=code; __cnt++;
+      try{ saveVerseTitles(code,__tt); }catch(_e){}
+      try{ saveVerseNotes(code,__nn); }catch(_e){}
       if(!loadedVersionCodes.includes(code)) loadedVersionCodes.push(code);
       console.log(file.name,'→',code,'books',books.length,'matched',meta.matched,'sample',books.slice(0,5));
     }catch(e){ console.error(e); toast('오류: '+file.name); }
@@ -4711,6 +4801,8 @@ $('btn-assign-ok').onclick=async ()=>{
   pendingFiles=[];
   if(!loadedVersionCodes.length){ toast('인식된 구절이 없습니다'); return; }
   { const d0=defaultPaneVersions(); if(!paneVersion.A) paneVersion.A=d0.A; if(!paneVersion.B) paneVersion.B=d0.B; }
+  /* 파일 1개를 불러왔으면 그 번역본으로 바로 전환 (읽던 위치 유지) */
+  if(__cnt===1 && __lastCode && bibleByVersion[__lastCode]){ try{ paneVersion[readPane||'A']=__lastCode; }catch(_e){} }
   fillVersionSelects(); bookIndex=firstBookIndex(paneVersion.A); chapter=1; verseIndex=0;
   $('sel-book').disabled=false; $('sel-chapter').disabled=false;
   restoreLastPos(); posReady=true; populateVoices(); updateReadLabels();
@@ -4995,7 +5087,27 @@ function renderPane(p, _aligned){
     const div = document.createElement('div');
     div.className = 'verse' + (isEng(ver) ? ' en' : '') + (i===verseIndex ? ' active' : '');
     div.id = `v-${p}-${i}`;
-    div.innerHTML = `<span class="chk"></span><span class="vnum">${i+1}</span>${escHtml(displayVerseText(t, ver))}`;
+    let __vtxt=escHtml(displayVerseText(t, ver)), __vn=null;
+    try{
+      __vn=verseNoteOf(ver, BOOK_ORDER[bookIndex], chapter, i);
+      if(__vn && __vn.m && __vn.m.length){
+        let o='',pos=0; const T=String(t||'');
+        __vn.m.forEach(function(x){ o+=escHtml(displayVerseText(T.slice(pos,x[0]),ver)); o+='<sup class="vnote-mk" data-k="'+x[1]+'">'+x[1]+'</sup>'; pos=x[0]; });
+        o+=escHtml(displayVerseText(T.slice(pos),ver)); __vtxt=o;
+      }
+    }catch(_e){}
+    div.innerHTML = `<span class="chk"></span><span class="vnum">${i+1}</span>${__vtxt}`;
+    try{
+      if(__vn && __vn.n && Object.keys(__vn.n).length){
+        const box=document.createElement('div'); box.className='vnote-box'; box.hidden=true;
+        Object.keys(__vn.n).forEach(function(k){ const en=document.createElement('div'); en.className='vnote-en'; en.dataset.k=k; en.hidden=true; en.innerHTML='<b>'+k+'</b> '+escHtml(__vn.n[k]); box.appendChild(en); });
+        div.appendChild(box);
+        const tog=function(k){ const en=box.querySelector('.vnote-en[data-k="'+k+'"]'); if(!en) return; en.hidden=!en.hidden; box.hidden=![].some.call(box.children,function(c){return !c.hidden;}); };
+        div.querySelectorAll('.vnote-mk').forEach(function(mk){ mk.addEventListener('click',function(e){ e.preventDefault(); e.stopPropagation(); tog(mk.dataset.k); }); });
+        box.addEventListener('click',function(e){ e.stopPropagation(); });
+      }
+    }catch(_e){}
+    try{ const __vt=verseTitleOf(ver, BOOK_ORDER[bookIndex], chapter, i); if(__vt) div.insertAdjacentHTML('afterbegin','<div class="vtitle">'+escHtml(__vt)+'</div>'); }catch(_e){}
     bindVerseEl(div, p, i, t, ver);
     try{
       const stBtn = document.createElement('button');
@@ -6837,7 +6949,7 @@ applySettings();
 function defaultPaneVersions(){
   const VL=loadedVersionCodes.filter(c=>!isHiddenVer(c)), L=VL.length?VL:loadedVersionCodes;
   const has=c=>L.indexOf(c)>=0;
-  const a=has('korNKRV') ? 'korNKRV' : L[0];
+  const a=has('korn4KRV') ? 'korn4KRV' : (has('korNKRV') ? 'korNKRV' : L[0]);
   const b=has('NIV') ? 'NIV' : (L.find(c=>c!==a) || a);
   return {A:a, B:b};
 }
@@ -24599,5 +24711,6 @@ function f(){var r=document.getElementById('sh-root');if(r&&!r.hidden){window.di
 new MutationObserver(function(){setTimeout(f,60);setTimeout(f,400);}).observe(document.documentElement,{subtree:true,attributes:true,attributeFilter:['hidden']});
 })();
 </script>
+<style id="v142-vtitle">.verse .vtitle{display:block;font-size:.78em;font-weight:700;letter-spacing:.02em;color:var(--accent,#b8860b);opacity:.92;margin:8px 0 3px;line-height:1.35;pointer-events:none}.verse.en .vtitle{font-family:inherit}.verse.active .vtitle,.verse.selected .vtitle,.verse.cur .vtitle{color:#ffd45c;opacity:1}.verse .vnote-mk{font-size:.78em;vertical-align:super;line-height:0;color:var(--accent,#b8860b);font-weight:700;cursor:pointer;padding:0 2px;margin:0 1px}.verse .vnote-box{display:block;margin:4px 0 2px;padding:6px 9px;border-left:3px solid var(--accent,#b8860b);background:rgba(128,128,128,.12);border-radius:6px;font-size:.78em;line-height:1.5;opacity:.95}.verse .vnote-box[hidden],.verse .vnote-en[hidden]{display:none}.verse .vnote-en b{color:var(--accent,#b8860b)}.verse.active .vnote-mk,.verse.selected .vnote-mk{color:#ffd45c}</style>
 </body>
 </html>
