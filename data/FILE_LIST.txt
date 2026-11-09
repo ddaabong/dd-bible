@@ -1,0 +1,32 @@
+ESV.txt
+GNT.txt
+HCSB.txt
+ISV.txt
+KJV.txt
+MSG.txt
+NASB.txt
+NIV.txt
+NKJV.txt
+NLT.txt
+NRSV.txt
+TNIV.txt
+kchHRV.txt
+kchKTV.txt
+kchNKRV.txt
+korCath.txt
+korDOB.txt
+korEASY.txt
+korHChV.txt
+korHKJV.txt
+korHRV.txt
+korKKJV.txt
+korKLB.txt
+korKTV.txt
+korNKCB.txt
+korNKRV.txt
+korNRSV.txt
+korTKV.txt
+korn4nKRV.txt (개역개정4판)
+korsNRSV.txt (표준새번역개정)
+koroutCath.txt (가톨릭-외경)
+koroutNKCB.txt (공동번역-외경)
