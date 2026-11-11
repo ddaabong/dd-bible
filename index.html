@@ -76,6 +76,197 @@ function snapshot(){
   Object.keys(mem).forEach(function(k){ out[k]=mem[k]; });
   return out;
 }
+
+/* ===== v147 전체 백업/복원 엔진 (localStorage + 큰데이터 + 성경본문DB + 배경DB + 배경음악DB) ===== */
+var FULL_DBS=['ddabongBible','bpBgDB','ddabong_prayer_music_v1'];
+function b64FromBlob(b){ return new Promise(function(res,rej){ var fr=new FileReader(); fr.onload=function(){ var u=String(fr.result||''); res(u.slice(u.indexOf(',')+1)); }; fr.onerror=function(){ rej(fr.error); }; fr.readAsDataURL(b); }); }
+function blobFromB64(d,t){ var bin=atob(d), n=bin.length, u=new Uint8Array(n); for(var i=0;i<n;i++) u[i]=bin.charCodeAt(i); return new Blob([u],{type:t||''}); }
+function enc(v){
+  if(v==null||typeof v!=='object') return Promise.resolve(v);
+  if(typeof Blob!=='undefined' && v instanceof Blob) return b64FromBlob(v).then(function(d){ return {__dd:'blob',t:v.type||'',d:d,nm:v.name||''}; });
+  if(v instanceof ArrayBuffer) return b64FromBlob(new Blob([v])).then(function(d){ return {__dd:'ab',d:d}; });
+  if(ArrayBuffer.isView(v)) return b64FromBlob(new Blob([v.buffer.slice(v.byteOffset,v.byteOffset+v.byteLength)])).then(function(d){ return {__dd:'ab',d:d}; });
+  if(Array.isArray(v)) return Promise.all(v.map(enc));
+  var ks=Object.keys(v), out={}; var ch=Promise.resolve();
+  ks.forEach(function(k){ ch=ch.then(function(){ return enc(v[k]); }).then(function(x){ out[k]=x; }); });
+  return ch.then(function(){ return out; });
+}
+function dec(v,ctx){
+  if(v==null||typeof v!=='object') return v;
+  if(Array.isArray(v)) return v.map(function(x){ return dec(x,ctx); });
+  if(v.__dd==='ref'){ return ctx&&ctx.file ? ctx.file.slice(ctx.base+v.o,ctx.base+v.o+v.l,v.t||'') : new Blob([]); }
+  if(v.__dd==='blob'){ var b=blobFromB64(v.d,v.t); return b; }
+  if(v.__dd==='ab'){ var bin=atob(v.d), u=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i); return u.buffer; }
+  var o={}; Object.keys(v).forEach(function(k){ o[k]=dec(v[k],ctx); }); return o;
+}
+function openAny(name){ return new Promise(function(res){ try{ var r=indexedDB.open(name); r.onsuccess=function(){ res(r.result); }; r.onerror=function(){ res(null); }; r.onblocked=function(){ res(null); }; }catch(e){ res(null); } }); }
+function dumpStore(db,sn){
+  return new Promise(function(res){
+    try{
+      var t=db.transaction(sn,'readonly'), st=t.objectStore(sn), recs=[], c=st.openCursor();
+      c.onsuccess=function(){ var cur=c.result; if(cur){ recs.push([cur.key,cur.value]); cur.continue(); } else res({kp:st.keyPath==null?null:st.keyPath,auto:!!st.autoIncrement,recs:recs}); };
+      c.onerror=function(){ res({kp:st.keyPath==null?null:st.keyPath,auto:!!st.autoIncrement,recs:recs}); };
+    }catch(e){ res(null); }
+  });
+}
+/* v148: 바이너리 컨테이너 — 'DDBK3'+JSON길이(4)+JSON+원본파일들(base64 없음). 같은 파일은 한 번만 저장 */
+function encRef(v,ctx){
+  if(v==null||typeof v!=='object') return v;
+  if(typeof Blob!=='undefined' && v instanceof Blob){
+    var ix=ctx.map.indexOf(v);
+    if(ix<0){ ix=ctx.map.length; ctx.map.push(v); ctx.off.push(ctx.size); ctx.size+=v.size; }
+    else ctx.dup+=v.size;
+    return {__dd:'ref',o:ctx.off[ix],l:v.size,t:v.type||''};
+  }
+  if(v instanceof ArrayBuffer){ return encRef(new Blob([v]),ctx); }
+  if(ArrayBuffer.isView(v)){ return encRef(new Blob([v.buffer.slice(v.byteOffset,v.byteOffset+v.byteLength)]),ctx); }
+  if(Array.isArray(v)) return v.map(function(x){ return encRef(x,ctx); });
+  var out={}; Object.keys(v).forEach(function(k){ out[k]=encRef(v[k],ctx); }); return out;
+}
+function exportAll(onProgress,opts){
+  opts=opts||{};
+  var ctx={map:[],off:[],size:0,dup:0}, sum={ls:0,bible:0,bg:0,music:0,musicBytes:0,skipVideo:0,skipMusic:0};
+  var snap=snapshot(); sum.ls=Object.keys(snap).length;
+  var idbOut={}, chain=Promise.resolve();
+  FULL_DBS.forEach(function(name){
+    chain=chain.then(function(){
+      if(name==='ddabong_prayer_music_v1' && opts.noMusic){
+        return openAny(name).then(function(db){ if(!db) return; var sn=[].slice.call(db.objectStoreNames); var c=Promise.resolve(); sn.forEach(function(x){ c=c.then(function(){ return dumpStore(db,x); }).then(function(d){ if(d) sum.skipMusic+=d.recs.length; }); }); return c.then(function(){ db.close(); }); }).then(function(){ return 'skip'; });
+      }
+      return openAny(name);
+    }).then(function(db){
+      if(!db || db==='skip') return;
+      var sns=[].slice.call(db.objectStoreNames);
+      if(!sns.length){ db.close(); return; }
+      idbOut[name]={};
+      var c2=Promise.resolve();
+      sns.forEach(function(sn){
+        c2=c2.then(function(){ return dumpStore(db,sn); }).then(function(d){
+          if(!d) return;
+          var recs=[];
+          d.recs.forEach(function(r,i){
+            var val=r[1];
+            if(name==='bpBgDB' && opts.noVideo){
+              var f=val&&(val.full||val.blob); if(f && /^video\//i.test(f.type||'')){ sum.skipVideo++; return; }
+            }
+            recs.push([r[0],encRef(val,ctx)]);
+            if(name==='ddabongBible'){ if(String(r[0]).indexOf('v:')===0) sum.bible++; }
+            else if(name==='bpBgDB') sum.bg++;
+            else { sum.music++; try{ if(val&&val.blob) sum.musicBytes+=val.blob.size||0; }catch(e){} }
+            if(onProgress) try{ onProgress(name,i+1,d.recs.length); }catch(e){}
+          });
+          idbOut[name][sn]={kp:d.kp,auto:d.auto?1:0,recs:recs};
+        });
+      });
+      return c2.then(function(){ db.close(); });
+    });
+  });
+  return chain.then(function(){
+    var json=JSON.stringify({app:'ddabong-bible',version:3,at:Date.now(),data:snap,idb:idbOut});
+    var jb=new Blob([json]), hdr=new Uint8Array(12);
+    hdr.set([68,68,66,75,51,0,0,0],0);
+    new DataView(hdr.buffer).setUint32(8,jb.size,false);
+    sum.bytes=12+jb.size+ctx.size; sum.dupBytes=ctx.dup;
+    return { blob:new Blob([hdr,jb].concat(ctx.map),{type:'application/octet-stream'}), summary:sum };
+  });
+}
+function putRecs(db,sn,meta,recs,merge,ctx){
+  return new Promise(function(res,rej){
+    var t=db.transaction(sn,'readwrite'), st=t.objectStore(sn), n=0;
+    recs.forEach(function(r){
+      var val=dec(r[1],ctx);
+      try{
+        if(merge) val=merge(r[0],val);
+        if(st.keyPath!=null) st.put(val); else st.put(val,r[0]);
+        n++;
+      }catch(e){}
+    });
+    t.oncomplete=function(){ res(n); }; t.onerror=function(){ rej(t.error); }; t.onabort=function(){ rej(t.error||new Error('abort')); };
+  });
+}
+function openEnsure(name,stores){
+  /* stores: {스토어명:{kp,auto}} — 없으면 만들면서 연다 */
+  return new Promise(function(res,rej){
+    var r0=indexedDB.open(name);
+    r0.onerror=function(){ rej(r0.error); };
+    r0.onsuccess=function(){
+      var db=r0.result, miss=Object.keys(stores).filter(function(s){ return !db.objectStoreNames.contains(s); });
+      if(!miss.length){ res(db); return; }
+      var ver=db.version+1; db.close();
+      var r1=indexedDB.open(name,ver);
+      r1.onupgradeneeded=function(){ var d=r1.result; miss.forEach(function(s){ var m=stores[s]; try{ d.createObjectStore(s, m.kp!=null?{keyPath:m.kp}:(m.auto?{autoIncrement:true}:undefined)); }catch(e){} }); };
+      r1.onsuccess=function(){ res(r1.result); }; r1.onerror=function(){ rej(r1.error); }; r1.onblocked=function(){ rej(new Error('저장소가 사용 중입니다')); };
+    };
+  });
+}
+function readFileText(f){
+  if(f.text) return f.text();
+  return new Promise(function(res,rej){ var r=new FileReader(); r.onload=function(){ res(String(r.result||'')); }; r.onerror=function(){ rej(r.error); }; r.readAsText(f); });
+}
+function inspectBackup(text){
+  var o=JSON.parse(text); if(!o||o.app!=='ddabong-bible'||!o.data) throw new Error('따봉성경 백업 파일이 아닙니다');
+  var sum={ls:Object.keys(o.data).length,bible:0,bg:0,music:0,at:o.at||0,full:!!o.idb};
+  if(o.idb){
+    var b=o.idb.ddabongBible&&o.idb.ddabongBible.data; if(b&&b.recs) b.recs.forEach(function(r){ if(String(r[0]).indexOf('v:')===0) sum.bible++; });
+    var g=o.idb.bpBgDB; if(g){ Object.keys(g).forEach(function(k){ sum.bg+=(g[k].recs||[]).length; }); }
+    var m=o.idb.ddabong_prayer_music_v1; if(m){ Object.keys(m).forEach(function(k){ sum.music+=(m[k].recs||[]).length; }); }
+  }
+  return {obj:o,sum:sum};
+}
+
+function openBackup(file){
+  return new Promise(function(res,rej){
+    var head=file.slice(0,12), fr=new FileReader();
+    fr.onerror=function(){ rej(fr.error); };
+    fr.onload=function(){
+      var u=new Uint8Array(fr.result);
+      if(u.length>=12 && u[0]===68&&u[1]===68&&u[2]===66&&u[3]===75&&u[4]===51){
+        var jl=new DataView(fr.result).getUint32(8,false);
+        readFileText(file.slice(12,12+jl)).then(function(text){
+          var c=inspectBackup(text); c.obj.__ctx={file:file,base:12+jl}; c.sum.bin=1; res(c);
+        }).catch(rej);
+      } else {
+        readFileText(file).then(function(text){ res(inspectBackup(text)); }).catch(rej);
+      }
+    };
+    fr.readAsArrayBuffer(head);
+  });
+}
+function importAll(o){
+  var n=0;
+  Object.keys(o.data||{}).forEach(function(k){ if(k===IDX) return; var v=o.data[k]; if(typeof v==='string'){ ls.setItem(k,v); n++; } });
+  if(!o.idb || !window.indexedDB) return Promise.resolve({ls:n,idb:0});
+  /* 복원 중 앱이 옛 상태로 번역본 DB를 덮어쓰지 않게 막음 */
+  try{ window.__ddRestoring=true; if(typeof window.saveDB==='function'){ window.__ddOrigSaveDB=window.saveDB; window.saveDB=function(){ return Promise.resolve(true); }; } }catch(e){}
+  var total=0, chain=Promise.resolve();
+  Object.keys(o.idb).forEach(function(name){
+    var stores=o.idb[name]; if(!stores) return;
+    chain=chain.then(function(){ return openEnsure(name,stores); }).then(function(db){
+      var c2=Promise.resolve();
+      Object.keys(stores).forEach(function(sn){
+        var m=stores[sn]; if(!m||!m.recs||!db.objectStoreNames.contains(sn)) return;
+        c2=c2.then(function(){
+          var merge=null;
+          if(name==='ddabongBible' && sn==='data'){
+            /* 'main' 기록은 현재 목록과 합침 */
+            return new Promise(function(res){ try{ var q=db.transaction(sn,'readonly').objectStore(sn).get('main'); q.onsuccess=function(){ res(q.result||null); }; q.onerror=function(){ res(null); }; }catch(e){ res(null); } }).then(function(cur){
+              merge=function(key,val){
+                if(key!=='main' || !cur || !val) return val;
+                var a=(val.loadedVersionCodes||[]).slice();
+                (cur.loadedVersionCodes||[]).forEach(function(c){ if(a.indexOf(c)<0) a.push(c); });
+                val.loadedVersionCodes=a; return val;
+              };
+              return putRecs(db,sn,m,m.recs,merge,o.__ctx);
+            });
+          }
+          return putRecs(db,sn,m,m.recs,null,o.__ctx);
+        }).then(function(c){ total+=c||0; });
+      });
+      return c2.then(function(){ db.close(); });
+    }).catch(function(e){ try{ console.warn('restore idb fail',name,e); }catch(_){} });
+  });
+  return chain.then(function(){ return {ls:n,idb:total}; });
+}
 window.__ddStore={
   ready:function(){ return ready; },
   snapshot:snapshot,
@@ -85,6 +276,7 @@ window.__ddStore={
     var n=0; Object.keys(o.data).forEach(function(k){ if(k===IDX) return; var v=o.data[k]; if(typeof v==='string'){ ls.setItem(k,v); n++; } });
     return n;
   },
+  exportAll:exportAll, openBackup:openBackup, inspectBackup:inspectBackup, importAll:importAll, readFileText:readFileText,
   flush:function(){ return Promise.all(pending.slice()).then(function(){ pending.length=0; }); },
   estimate:function(){ try{ return navigator.storage&&navigator.storage.estimate?navigator.storage.estimate():Promise.resolve(null); }catch(e){ return Promise.resolve(null); } },
   bigKeys:function(){ return Object.keys(big); }
@@ -7552,6 +7744,7 @@ async function autoInstallHostedTranslations(opts){
       if(r0 && !r0.ok && Date.now()-r0.t < 18e5) continue;
       const g0=item.code||guessVersion(name);
       if(!r0 && g0!=='custom' && bibleByVersion[g0] && Object.keys(bibleByVersion[g0]).length>=60){ _rec[name]={ok:1,t:Date.now()}; continue; } }
+    { let _w=0; while(window.__v9Busy && _w++<40) await new Promise(function(r){ setTimeout(r,120); }); }
     const url = item.url ? new URL(item.url, manifestUrl).href : new URL(name, new URL('./data/', location.href)).href;
     try{
       toast('성경 번역본 설치 중… '+(i+1)+'/'+items.length);
@@ -13249,6 +13442,7 @@ body.scroll-menus-hidden:not(.th-open):not(.v9-zoom) #v9-chtitle.has{opacity:1;t
 #today-home{will-change:transform}
 #today-home .th-bar{position:relative}
 #today-home .th-apptitle,#today-home .th-h1{display:inline-block;transform-origin:left center}
+html.v9-settle #v9-chtitle,html.v9-arrive #v9-chtitle{transition:none!important}
 html.v9-settle #today-home .th-apptitle,html.v9-settle #today-home .th-h1,html.v9-settle #logo-feature-trigger,html.v9-settle #btn-today{transition:transform .3s ease,opacity .3s ease}
 /* 도착하는 쪽 글자가 커졌다 제자리로: q = 4p(1-p) (중간에서 최대) */
 html.v9-h2r #today-home .th-apptitle{transform:scale(calc(1 + .45*4*var(--v9-p,0)*(1 - var(--v9-p,0))));color:#ffd45c}
@@ -13282,33 +13476,61 @@ html body .app-bar .bar-row>#btn-today{order:-1}
    h.style.webkitBackfaceVisibility='hidden';
    h.style.transition=anim?'transform .3s cubic-bezier(.22,.8,.3,1)':'none';
    h.style.transform='translate3d('+hx+'px,0,0)';
-   readerEls().forEach(e=>{e.style.setProperty('transition',anim?'transform .3s cubic-bezier(.22,.8,.3,1)':'none','important');e.style.setProperty('transform','translateX('+rx+'px)','important');});
+   readerEls().forEach(e=>{
+     /* v150: 상단바·도구바가 스크롤로 숨겨진 상태(translateY)였다면 그 세로 위치를 유지한 채 가로로만 이동 (도착 직후 바가 내려왔다 올라가는 떨림 방지) */
+     if(e.__v9ty===undefined){ let ty=0; try{ const tr=getComputedStyle(e).transform; if(tr&&tr!=='none') ty=new DOMMatrixReadOnly(tr).m42||0; }catch(_){} e.__v9ty=ty; }
+     e.style.setProperty('transition',anim?'transform .3s cubic-bezier(.22,.8,.3,1)':'none','important');
+     e.style.setProperty('transform','translate3d('+rx+'px,'+e.__v9ty+'px,0)','important');
+   });
+
  }
  function clear(){
    R.classList.remove('v9-h2r','v9-r2h','v9-settle');R.style.removeProperty('--v9-p');
    const h=home();if(h){h.style.transition='';h.style.transform='';h.style.removeProperty('backface-visibility');h.style.removeProperty('-webkit-backface-visibility');}
-   readerEls().forEach(e=>{e.style.removeProperty('transition');e.style.removeProperty('transform');});
+   readerEls().forEach(e=>{e.style.removeProperty('transition');e.style.removeProperty('transform');delete e.__v9ty;});
+
    B.style.removeProperty('overflow');
    try{const sc=h&&h.querySelector('.th-scroll');if(sc)sc.style.removeProperty('overflow-y');}catch(e){}
    try{R.scrollLeft=0;B.scrollLeft=0;window.scrollTo(0,window.scrollY||0);}catch(e){}
    drag=null;busy=false;
  }
  function settle(hx,rx,p,mode,done){
-   busy=true;R.classList.add('v9-settle');
+   busy=true;window.__v9Busy=true;R.classList.add('v9-settle');
    B.style.overflow='hidden';
    requestAnimationFrame(()=>{place(hx,rx,true);setP(p,mode);});
-   setTimeout(()=>{done&&done();clear();},340);
+   setTimeout(()=>{
+     /* v150: 도착 직후 레이아웃 변경(done)과 transform 해제(clear)를 서로 다른 프레임으로 분리하고, 스크롤 위치를 보존 */
+     let sts=[];try{sts=[...document.querySelectorAll('.pane-body')].map(e=>[e,e.scrollTop]);}catch(e){}
+     done&&done();
+     requestAnimationFrame(()=>requestAnimationFrame(()=>{
+       clear();promote(false);
+       try{sts.forEach(a=>{if(a[0].isConnected&&Math.abs(a[0].scrollTop-a[1])>1&&a[1]>0)a[0].scrollTop=a[1];});}catch(e){}
+       window.__v9Freeze=Date.now()+700;R.classList.add('v9-arrive');setTimeout(()=>R.classList.remove('v9-arrive'),750);
+       window.__v9Busy=false;
+     }));
+   },340);
  }
+ /* v150: 전환 전에 레이어를 미리 GPU 합성층으로 올려 시작·끝의 떨림 방지 */
+ /* v152: 전환 중과 도착 직후 0.7초 동안은 '메뉴 숨김(scroll-menus-hidden)' 상태가 바뀌지 않게 고정 — 여러 스크롤 감지 코드가 도착 직후 상태를 뒤집으며 생기던 떨림 방지 */
+ window.__v9Freeze=0;
+ (function(){
+   const cl=B.classList,oa=cl.add.bind(cl),orm=cl.remove.bind(cl),ot=cl.toggle.bind(cl),K='scroll-menus-hidden';
+   const frozen=()=>window.__v9Busy||Date.now()<window.__v9Freeze;
+   cl.add=function(...a){if(frozen())a=a.filter(x=>x!==K);return a.length?oa(...a):undefined;};
+   cl.remove=function(...a){if(frozen())a=a.filter(x=>x!==K);return a.length?orm(...a):undefined;};
+   cl.toggle=function(t,f){if(t===K&&frozen())return cl.contains(K);return f===undefined?ot(t):ot(t,f);};
+ })();
+ function promote(on){try{readerEls().concat([home()]).forEach(e=>{if(e)e.style.willChange=on?'transform':'';});}catch(e){}}
  const W=()=>document.documentElement.clientWidth;
  function toReader(fromP){
    const h=home();if(!h||busy||!isHome())return;
-   const w=W();place(0,w,false);setP(fromP||0,'h2r');void h.offsetWidth;
+   const w=W();promote(true);place(0,w,false);setP(fromP||0,'h2r');void h.offsetWidth;
    settle(-w,0,1,'h2r',()=>{window.__thOpenReader&&window.__thOpenReader();});
  }
  function toHome(){
    if(busy||isHome()||!window.__thOpenHome)return;
    const w=W();window.__thOpenHome();if(!home())return;
-   place(-w,0,false);setP(0,'r2h');void home().offsetWidth;
+   promote(true);place(-w,0,false);setP(0,'r2h');void home().offsetWidth;
    settle(0,w,1,'r2h');
  }
  window.__v9TurnToReader=toReader;window.__v9TurnToHome=toHome;
@@ -14209,7 +14431,7 @@ function openMgr(){
 '  </div>',
 '  <div class="bgm-body" id="bgm-body"></div>',
 '  <div class="bgm-foot" id="bgm-quota"></div>',
-'  <div class="bgm-backup" id="bgm-backup"><div class="bgm-bk-title">백업 · 복원</div><div class="bgm-bk-row"><button type="button" id="bgm-bk-save">백업 저장</button><button type="button" id="bgm-bk-share">백업 공유</button><button type="button" id="bgm-bk-load">불러오기</button></div><div class="bgm-bk-info" id="bgm-bk-info">저장공간 확인 중…</div><input type="file" id="bgm-bk-file" hidden></div>',
+'  <div class="bgm-backup" id="bgm-backup"><div class="bgm-bk-title">전체 백업 · 복원</div><div class="bgm-bk-row"><button type="button" id="bgm-bk-save">전체 백업 저장</button><button type="button" id="bgm-bk-share">백업 공유</button><button type="button" id="bgm-bk-load">불러오기(복원)</button></div><div class="bgm-bk-info" id="bgm-bk-info">저장공간 확인 중…</div><div class="bgm-bk-opt" style="display:flex;gap:14px;margin-top:6px;font-size:12px;color:#d8cfbd"><label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="bgm-bk-nov"> 영상 제외</label><label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="bgm-bk-nom"> 음악 제외</label></div><input type="file" id="bgm-bk-file" hidden></div>',
 ' </div>',
 ' <div class="bgm-pane" id="pane-tpl"><div class="bgm-body" id="tpl-body"></div></div>',
 ' <div class="bgm-pick" id="bgm-pick" hidden>',
@@ -14559,52 +14781,71 @@ function bkStamp(){ var d=new Date(), p=function(n){return (n<10?'0':'')+n;}; re
 function bkInfo(){
   var el=document.getElementById('bgm-bk-info'); if(!el||!window.__ddStore) return;
   window.__ddStore.estimate().then(function(e){
-    var big=window.__ddStore.bigKeys().length;
-    el.textContent = (e&&e.quota ? ('저장공간 사용 '+(e.usage/1048576).toFixed(1)+'MB / 한도 약 '+(e.quota/1048576>=1024?(e.quota/1073741824).toFixed(1)+'GB':Math.round(e.quota/1048576)+'MB')+' · ') : '')+'큰 데이터 '+big+'개는 대용량 저장소에 보관 · 앱을 지우면 사라지니 가끔 백업하세요';
+    el.textContent = (e&&e.quota ? ('저장공간 사용 '+(e.usage/1048576).toFixed(1)+'MB / 한도 약 '+(e.quota/1048576>=1024?(e.quota/1073741824).toFixed(1)+'GB':Math.round(e.quota/1048576)+'MB')+' · ') : '')+'전체 백업 = 오늘의 말씀·기도 기록, 배경(사진·영상), 배경음악, 묵상·암송·즐겨찾기·하이라이트, 번역본 본문, 설정까지 모두 한 파일 · 앱을 지우면 사라지니 가끔 백업하세요';
   });
+}
+function bkSumText(s){
+  return '설정·기록 '+s.ls+'개 · 번역본 '+s.bible+'개 · 배경 '+s.bg+'개 · 배경음악 '+s.music+'개'+(s.skipVideo?' · 영상 '+s.skipVideo+'개 제외':'')+(s.skipMusic?' · 음악 '+s.skipMusic+'개 제외':'')+(s.dupBytes?' · 중복 '+(s.dupBytes/1048576).toFixed(0)+'MB 절약':'');
 }
 function wireBackup(sheet){
   var S=window.__ddStore; if(!S) return;
   var bs=sheet.querySelector('#bgm-bk-save'), bh=sheet.querySelector('#bgm-bk-share'), bl=sheet.querySelector('#bgm-bk-load'), bf=sheet.querySelector('#bgm-bk-file');
-  function build(){ var json=S.exportJson(); return { json:json, name:'따봉성경-백업-'+bkStamp()+'.json' }; }
+  var busy=false;
+  function setInfo(t){ var el=document.getElementById('bgm-bk-info'); if(el) el.textContent=t; }
+  function build(){
+    setInfo('전체 자료를 모으는 중… 잠시만 기다려 주세요');
+    var last=0;
+    var opts={noVideo:!!(sheet.querySelector('#bgm-bk-nov')||{}).checked,noMusic:!!(sheet.querySelector('#bgm-bk-nom')||{}).checked};
+    return S.exportAll(function(name,i,n){ var now=Date.now(); if(now-last>300){ last=now; var lb=(name==='ddabongBible'?'번역본':name==='bpBgDB'?'배경':'배경음악'); setInfo(lb+' 정리 중… '+i+'/'+n); } },opts).then(function(r){
+      return { blob:r.blob, summary:r.summary, name:'따봉성경-전체백업-'+bkStamp()+'.ddbk' };
+    });
+  }
+  function done(b,msg){ setInfo(msg+' ('+(b.blob.size/1048576).toFixed(1)+'MB) · '+bkSumText(b.summary)); }
   bs.onclick=function(){
-    try{
-      var b=build(), blob=new Blob([b.json],{type:'application/json'}), url=URL.createObjectURL(blob), a=document.createElement('a');
+    if(busy) return; busy=true;
+    build().then(function(b){
       var api=window.AndroidShare||window.Android;
-      if(api && typeof api.saveText==='function'){ api.saveText(b.name,b.json); toast('백업 저장 창을 엽니다'); return; }
-      a.href=url; a.download=b.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(url); },4000);
-      toast('백업 파일을 저장합니다 ('+(b.json.length/1048576).toFixed(1)+'MB) · 저장이 안 되면 「백업 공유」를 쓰세요');
-    }catch(e){ toast('백업 실패: '+(e&&e.message||e)); }
+      var viaApp = false; /* v148: 바이너리 백업은 브라우저 저장 방식 */
+      if(viaApp){
+        return S.readFileText(b.blob).then(function(text){ api.saveText(b.name,text); done(b,'✓ 백업 저장 창을 엽니다'); toast('백업 저장 창을 엽니다'); });
+      }
+      var url=URL.createObjectURL(b.blob), a=document.createElement('a');
+      a.href=url; a.download=b.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(url); },8000);
+      done(b,'✓ 백업 파일을 저장합니다'); toast('백업 파일을 저장합니다 · 저장이 안 되면 「백업 공유」를 쓰세요');
+    }).catch(function(e){ setInfo('백업 실패: '+(e&&e.message||e)); toast('백업 실패: '+(e&&e.message||e)); }).then(function(){ busy=false; });
   };
   bh.onclick=function(){
-    try{
-      var b=build(), file=new File([b.json],b.name,{type:'application/json'});
-      if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){ navigator.share({files:[file],title:'따봉성경 백업'}).catch(function(){}); return; }
+    if(busy) return; busy=true;
+    build().then(function(b){
+      var file=new File([b.blob],b.name,{type:'application/json'});
+      if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){ done(b,'✓ 공유 창을 엽니다'); return navigator.share({files:[file],title:'따봉성경 전체 백업'}).catch(function(){}); }
       var api=window.AndroidShare||window.Android;
-      if(api && typeof api.shareText==='function'){ api.shareText(b.json); toast('공유 창을 엽니다'); return; }
-      toast('이 기기에서는 큰 백업을 공유창으로 보낼 수 없습니다. 「백업 저장」을 쓰거나 웹브라우저에서 이 앱을 열어 백업하세요');
-    }catch(e){ toast('공유 실패: '+(e&&e.message||e)); }
+      if(false){ }
+      setInfo('이 기기에서는 큰 백업을 공유창으로 보낼 수 없습니다. 「백업 저장」을 쓰세요');
+      toast('이 기기에서는 큰 백업을 공유창으로 보낼 수 없습니다. 「백업 저장」을 쓰세요');
+    }).catch(function(e){ setInfo('공유 실패: '+(e&&e.message||e)); toast('공유 실패: '+(e&&e.message||e)); }).then(function(){ busy=false; });
   };
   bl.onclick=function(){ bf.value=''; bf.click(); };
   bf.onchange=function(){
     var f=bf.files&&bf.files[0]; if(!f) return;
-    var r=new FileReader();
-    r.onload=function(){
-      var text=String(r.result||''), info=document.getElementById('bgm-bk-info'), cnt=0;
-      try{ var o=JSON.parse(text); if(!o||o.app!=='ddabong-bible'||!o.data) throw new Error('따봉성경 백업 파일이 아닙니다'); cnt=Object.keys(o.data).length; }
-      catch(e){ toast('복원 실패: '+(e&&e.message||e)); return; }
-      info.innerHTML=''; var msg=document.createElement('div'); msg.textContent='선택한 백업: '+f.name+' ('+cnt+'개 항목). 같은 항목은 덮어쓰고 없는 항목은 그대로 둡니다.';
+    setInfo('백업 파일을 읽는 중…');
+    S.openBackup(f).then(function(chk){
+      var info=document.getElementById('bgm-bk-info');
+      info.innerHTML=''; var msg=document.createElement('div');
+      msg.textContent='선택한 백업: '+f.name+' ('+bkSumText(chk.sum)+(chk.sum.full?'':' · 이전 형식: 설정·기록만 포함')+'). 같은 항목은 덮어쓰고 없는 항목은 그대로 둡니다.';
       var go=document.createElement('button'); go.type='button'; go.textContent='이 백업으로 복원하기'; go.style.cssText='margin-top:6px;margin-right:8px;height:34px;padding:0 14px;border-radius:10px;border:0;background:#ffd45c;color:#1a1714;font-weight:800;font-size:12.5px';
       var no=document.createElement('button'); no.type='button'; no.textContent='취소'; no.style.cssText='height:34px;padding:0 14px;border-radius:10px;border:1px solid #4a4336;background:#2a261f;color:#f0e8d8;font-size:12.5px';
       info.appendChild(msg); info.appendChild(go); info.appendChild(no);
       no.onclick=function(){ bkInfo(); };
       go.onclick=function(){
-        try{ var n=S.importJson(text); toast('✓ '+n+'개 항목을 복원하는 중… 잠시만 기다려 주세요'); var fl=(S.flush?S.flush():Promise.resolve()); Promise.race([fl,new Promise(function(r){ setTimeout(r,25000); })]).then(function(){ toast('✓ 복원 완료 · 앱을 다시 불러옵니다'); setTimeout(function(){ location.reload(); },900); }); }
-        catch(e){ toast('복원 실패: '+(e&&e.message||e)); }
+        if(busy) return; busy=true;
+        toast('복원하는 중… 잠시만 기다려 주세요'); setInfo('복원하는 중… 앱을 끄지 마세요');
+        S.importAll(chk.obj).then(function(r){
+          var fl=(S.flush?S.flush():Promise.resolve());
+          return Promise.race([fl,new Promise(function(x){ setTimeout(x,25000); })]).then(function(){ toast('✓ 복원 완료 ('+r.ls+'+'+r.idb+'개) · 앱을 다시 불러옵니다'); setTimeout(function(){ location.reload(); },900); });
+        }).catch(function(e){ busy=false; toast('복원 실패: '+(e&&e.message||e)); bkInfo(); });
       };
-    };
-    r.onerror=function(){ toast('파일을 읽지 못했습니다'); };
-    r.readAsText(f);
+    }).catch(function(){ toast('파일을 읽지 못했습니다'); bkInfo(); });
   };
   bkInfo();
 }
@@ -24712,5 +24953,85 @@ new MutationObserver(function(){setTimeout(f,60);setTimeout(f,400);}).observe(do
 })();
 </script>
 <style id="v142-vtitle">.verse .vtitle{display:block;font-size:.78em;font-weight:700;letter-spacing:.02em;color:var(--accent,#b8860b);opacity:.92;margin:8px 0 3px;line-height:1.35;pointer-events:none}.verse.en .vtitle{font-family:inherit}.verse.active .vtitle,.verse.selected .vtitle,.verse.cur .vtitle{color:#ffd45c;opacity:1}.verse .vnote-mk{font-size:.78em;vertical-align:super;line-height:0;color:var(--accent,#b8860b);font-weight:700;cursor:pointer;padding:0 2px;margin:0 1px}.verse .vnote-box{display:block;margin:4px 0 2px;padding:6px 9px;border-left:3px solid var(--accent,#b8860b);background:rgba(128,128,128,.12);border-radius:6px;font-size:.78em;line-height:1.5;opacity:.95}.verse .vnote-box[hidden],.verse .vnote-en[hidden]{display:none}.verse .vnote-en b{color:var(--accent,#b8860b)}.verse.active .vnote-mk,.verse.selected .vnote-mk{color:#ffd45c}</style>
+<style id="v149-orient-css">
+#focus-play-tog #focus-orient-btn{
+  width:44px;height:44px;border-radius:50%;border:1.5px solid rgba(255,255,255,.32);
+  background:rgba(26,53,80,.94);color:#fff;display:inline-flex;align-items:center;justify-content:center;
+  padding:0;cursor:pointer;flex:0 0 auto;-webkit-tap-highlight-color:transparent;
+}
+#focus-play-tog #focus-orient-btn svg,#rs-orient-btn svg{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+html body #focus-play-tog{width:max-content;max-width:calc(100vw - 12px)}
+html body #focus-play-tog #focus-menu-btn{white-space:nowrap;flex:0 0 auto}
+#focus-play-tog #focus-orient-btn.lock{border-color:#c9a227;color:#ffd45c}
+#focus-play-tog #focus-orient-btn:active,#rs-orient-btn:active{opacity:.85;transform:scale(.96)}
+html body #focus-play-tog #focus-orient-btn{background:rgba(26,53,80,.94)!important}
+#rs-orient-btn{display:flex;align-items:center;gap:12px;width:100%;min-height:52px;padding:8px 14px;border-radius:14px;border:1.5px solid rgba(0,0,0,.14);background:#fff;color:#1a3550;font-size:15px;font-weight:700;cursor:pointer;text-align:left}
+#rs-orient-btn.lock{border-color:#c9a227;background:#fff6d8}
+#rs-orient-btn .t{flex:1 1 auto;min-width:0}
+#rs-orient-btn .s{display:block;font-size:11.5px;font-weight:500;opacity:.7;margin-top:2px}
+</style>
+<script id="v149-orient-js">
+(function(){
+ var KEY='ddabongOrient_v1', MODES=['auto','portrait','landscape'];
+ var NAME={auto:'자동',portrait:'세로 고정',landscape:'가로 고정'};
+ var SUB={auto:'기기 회전에 따라 자동으로 바뀝니다',portrait:'기기를 돌려도 세로 화면 유지',landscape:'기기를 돌려도 가로 화면 유지'};
+ var ICON={
+  auto:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="2.5" width="8" height="13" rx="1.8"/><rect x="2.5" y="6.5" width="14" height="8" rx="1.8"/><path d="M14 21h6.5v-6.5"/><path d="M16.2 18.8L14 21l2.2 2.2"/><path d="M18.3 16.7l2.2-2.2 2.2 2.2"/></svg>',
+  portrait:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="2" width="11" height="20" rx="2.2"/><path d="M10.5 19h3"/></svg>',
+  landscape:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6.5" width="20" height="11" rx="2.2"/><path d="M19 10.5v3"/></svg>'
+ };
+ function get(){ try{ var v=localStorage.getItem(KEY); return MODES.indexOf(v)>=0?v:'auto'; }catch(e){ return 'auto'; } }
+ function put(v){ try{ localStorage.setItem(KEY,v); }catch(e){} }
+ function bridge(){
+  var a=window.AndroidShare, b=window.Android;
+  if(a && typeof a.setOrientation==='function') return a;
+  if(b && typeof b.setOrientation==='function') return b;
+  return null;
+ }
+ function apply(mode,loud){
+  var br=bridge(), n=MODES.indexOf(mode);
+  if(br){ try{ br.setOrientation(n); return true; }catch(e){} }
+  try{
+   var so=screen.orientation;
+   if(so){
+    if(mode==='auto'){ if(so.unlock) so.unlock(); return true; }
+    if(so.lock){ var pr=so.lock(mode==='portrait'?'portrait':'landscape'); if(pr&&pr.catch) pr.catch(function(){ if(loud) toast('이 환경에서는 방향 고정이 지원되지 않습니다 · 앱을 최신 버전으로 업데이트하세요'); }); return true; }
+   }
+  }catch(e){}
+  if(loud && mode!=='auto') toast('이 환경에서는 방향 고정이 지원되지 않습니다 · 앱을 최신 버전으로 업데이트하세요');
+  return false;
+ }
+ function toast(m){ try{ if(typeof window.toast==='function'){ window.toast(m); return; } }catch(e){} try{ var t=document.getElementById('toast'); if(t){ t.textContent=m; t.classList.add('show'); setTimeout(function(){ t.classList.remove('show'); },2200); } }catch(e){} }
+ function sync(){
+  var m=get(), a=document.getElementById('focus-orient-btn'), r=document.getElementById('rs-orient-btn'), v=document.getElementById('rs-orient-v');
+  if(a){ a.innerHTML=ICON[m]; a.title='화면 방향: '+NAME[m]; a.setAttribute('aria-label','화면 방향 '+NAME[m]+' (누르면 변경)'); a.classList.toggle('lock',m!=='auto'); }
+  if(r){ r.innerHTML=ICON[m]+'<span class="t">'+NAME[m]+'<span class="s">'+SUB[m]+' · 눌러서 자동 → 세로 → 가로</span></span>'; r.classList.toggle('lock',m!=='auto'); }
+  if(v) v.textContent=NAME[m];
+ }
+ function next(e){
+  if(e){ e.preventDefault(); e.stopPropagation(); }
+  var m=MODES[(MODES.indexOf(get())+1)%3]; put(m); sync(); apply(m,true); toast('화면 방향: '+NAME[m]);
+ }
+ function build(){
+  var tog=document.getElementById('focus-play-tog'), pb=document.getElementById('focus-play-btn');
+  if(tog && pb && !document.getElementById('focus-orient-btn')){
+   var b=document.createElement('button'); b.type='button'; b.id='focus-orient-btn'; b.addEventListener('click',next);
+   tog.insertBefore(b,tog.firstElementChild||pb);
+  }
+  var sh=document.querySelector('#sheet-rs .sheet'), h2=sh&&sh.querySelector('h2');
+  if(sh && h2 && !document.getElementById('rs-orient')){
+   var bx=document.createElement('div'); bx.className='rs-box'; bx.id='rs-orient';
+   bx.innerHTML='<div class="rs-t"><span>화면 방향</span><span class="rs-v" id="rs-orient-v"></span></div><button type="button" id="rs-orient-btn"></button>';
+   h2.parentNode.insertBefore(bx,h2.nextSibling);
+   bx.querySelector('#rs-orient-btn').addEventListener('click',next);
+  }
+  sync();
+ }
+ function boot(){ build(); var m=get(); if(m!=='auto') apply(m,false); }
+ if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();
+ setTimeout(function(){ build(); var m=get(); if(m!=='auto') apply(m,false); },1500);
+ window.__ddOrient={get:get,next:next,apply:apply};
+})();
+</script>
 </body>
 </html>
